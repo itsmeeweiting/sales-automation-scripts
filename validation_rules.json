@@ -1,0 +1,82 @@
+{
+  "Patch": [
+    "Malaysia",
+    "Indonesia",
+    "Japan"
+  ],
+  "Status": [
+    "Pending Response",
+    "Contacted - Working",
+    "Meeting Pending TBC",
+    "Meeting booked",
+    "No Interest / No Response / Blocked",
+    "Left Company",
+    "For AE Contact"
+  ],
+  "Source / Signal": [
+    "Outbound",
+    "MQL",
+    "Event Source",
+    "Moved Leads",
+    "News",
+    "Sales Report",
+    "Panelist",
+    "Intent Signals",
+    "MDB Skills",
+    "Reconnect",
+    "Previous Opp",
+    "AE Contact"
+  ],
+  "Touch 1": [
+    "Email",
+    "Direct Call",
+    "LI Connect",
+    "LI Message",
+    "InMail",
+    "Telegram",
+    "Salesloft Call",
+    "WA Msg",
+    "WA Call"
+  ],
+  "Touch 2": [
+    "Email",
+    "Direct Call",
+    "LI Connect",
+    "LI Message",
+    "InMail",
+    "Telegram",
+    "Salesloft Call",
+    "WA Msg",
+    "WA Call"
+  ],
+  "Touch 3": [
+    "Email",
+    "Direct Call",
+    "LI Connect",
+    "LI Message",
+    "InMail",
+    "Telegram",
+    "Salesloft Call",
+    "WA Msg",
+    "WA Call"
+  ],
+  "Potential Coffee Chats": [
+    "TRUE",
+    "FALSE"
+  ],
+  "Account Executive": [
+    "Alex Rivera",
+    "Jamie Lin",
+    "Sam Okafor",
+    "Priya Nair",
+    "Yuki Sato",
+    "Morgan Lee",
+    "Casey Tan",
+    "Riley Cruz"
+  ],
+  "Company Name": {
+    "type": "lookup",
+    "source": "accounts",
+    "column": "Company Name"
+  }
+}

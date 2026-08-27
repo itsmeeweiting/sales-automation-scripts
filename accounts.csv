@@ -1,0 +1,11 @@
+Patch,AE,Company Name,Alternative Name,Company Website,Account Tiering,Salesforce Link,Salesforce Status,Industry,SDR Notes,No. of Leads,Cloud,Remarks,MongoDB Friendly Titles,Following MDB,MongoDB in Profile,Search,Complimentary Tech,GenAI,ETL or CDC,Real-time,Customer Data Platform,Operational Data Store,MySQL,Oracle,MSSQL,PostgreSQL,Redis,MariaDB,IBM,AWS,GCP,Microsoft
+Indonesia,Alex Rivera,Acme Retail Group,,https://acmeretail.example.com,2,,,Retail,Opportunity Created,3,AWS,Follow up next quarter,Yes,Yes,No,Yes,,No,Yes,Yes,,,,,,Yes,,,Yes,,,
+Singapore,Jamie Lin,BrightPath Logistics,,https://brightpathlog.example.com,1,,Qualified,Logistics,,5,GCP,Strong intent signal,Yes,,Yes,,Yes,Yes,,Yes,Yes,,,,Yes,,,,Yes,,
+Malaysia,Sam Okafor,Nova Financial Services,NovaFin,https://novafin.example.com,3,,,Financial Services,Needs nurturing,1,Azure,,,,,,,,,,,,Yes,,Yes,,,,,Yes,
+Philippines,Alex Rivera,Coastal Health Systems,,,2,,,Healthcare,,2,,,Yes,Yes,,,,,,,,,,,Yes,,,,,,
+Vietnam,Priya Nair,Skyline Manufacturing Co,,https://skylinemfg.example.com,3,,Opportunity Created,Manufacturing,SDR reviewing,4,AWS,Interested in real-time analytics,,,Yes,Yes,,Yes,Yes,Yes,,Yes,,,,,,Yes,,,
+Thailand,Jamie Lin,Riverstone Insurance,,https://riverstoneins.example.com,1,,,Insurance,,1,,,,,,,,,,,,,,,,,,,,,
+Indonesia,Sam Okafor,Pinnacle Retail Holdings,,,2,,Qualified,Retail,Follow up scheduled,6,GCP,,Yes,,Yes,,Yes,,,Yes,,,,,Yes,,,,,Yes,
+Japan,Yuki Sato,Meridian Tech Solutions,,https://meridiantech.example.com,3,,,Technology,,2,AWS,,,Yes,,,,Yes,,,,,,,,,,,,Yes,
+Singapore,Priya Nair,Horizon Data Systems,HDS,https://horizondata.example.com,1,,Opportunity Created,Technology,Champion identified,3,,Multi-cloud interest,Yes,Yes,Yes,Yes,Yes,Yes,Yes,Yes,Yes,,,,,,,,Yes,Yes,Yes
+Malaysia,Yuki Sato,Cedarline Foods Group,,,2,,,Consumer Goods,,1,,,,,,,,,,,,,,,,,,,,,

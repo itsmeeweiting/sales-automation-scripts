@@ -1,0 +1,37 @@
+[
+  {
+    "id": 100001,
+    "label": "FY26Q1 | Key Accounts | Auto Follow-Up",
+    "name": "FY26Q1 | Key Accounts | Auto Follow-Up"
+  },
+  {
+    "id": 100002,
+    "label": "FY26Q1 | Key Accounts | Region A Follow-Up",
+    "name": "FY26Q1 | Key Accounts | Region A Follow-Up"
+  },
+  {
+    "id": 100003,
+    "label": "FY26Q1 | Sample Segment | Stand-In Application",
+    "name": "FY26Q1 | Sample Segment | Stand-In Application"
+  },
+  {
+    "id": 100004,
+    "label": "FY26 | Community Downloads",
+    "name": "FY26 | Community Downloads"
+  },
+  {
+    "id": 100005,
+    "label": "FY26Q1 Sample Campaign | Example Theme",
+    "name": "FY26Q1 Sample Campaign | Example Theme"
+  },
+  {
+    "id": 100006,
+    "label": "MQL | High Lead Score Users",
+    "name": "MQL | High Lead Score Users"
+  },
+  {
+    "id": 100007,
+    "label": "Vendor_Intent Signals",
+    "name": "Vendor_Intent Signals"
+  }
+]

@@ -1,0 +1,297 @@
+{
+  "sigma_report": {
+    "display_name": "Sigma Sales Territory Report",
+    "mappings": {
+      "Company Name": {
+        "type": "column",
+        "raw": "Account Name"
+      },
+      "Contact Name": {
+        "type": "column",
+        "raw": "Person Name"
+      },
+      "Title / Role": {
+        "type": "column",
+        "raw": "Job Title"
+      },
+      "Email": {
+        "type": "column",
+        "raw": "Person Email"
+      },
+      "Account Executive": {
+        "type": "column",
+        "raw": "sales_rep_name__c"
+      },
+      "Source / Signal": {
+        "type": "static",
+        "value": "Intent Signals"
+      },
+      "Patch": {
+        "type": "manual",
+        "default": ""
+      }
+    }
+  },
+  "mql_campaign": {
+    "display_name": "MQL / Campaign History",
+    "mappings": {
+      "Company Name": {
+        "type": "column",
+        "raw": "Account/Company"
+      },
+      "Contact Name": {
+        "type": "concat",
+        "raw": [
+          "First Name",
+          "Last Name"
+        ],
+        "separator": " "
+      },
+      "Email": {
+        "type": "column",
+        "raw": "Email"
+      },
+      "Account Executive": {
+        "type": "column",
+        "raw": "Account Owner"
+      },
+      "Patch": {
+        "type": "column",
+        "raw": "Country"
+      },
+      "Source / Signal": {
+        "type": "static",
+        "value": "MQL"
+      }
+    }
+  },
+  "cloud_mpss": {
+    "display_name": "Cloud MPSS Report",
+    "mappings": {
+      "Company Name": {
+        "type": "column",
+        "raw": "Account Name"
+      },
+      "Account Executive": {
+        "type": "column",
+        "raw": "Opportunity Owner"
+      },
+      "Source / Signal": {
+        "type": "static",
+        "value": "Sales Report"
+      },
+      "Patch": {
+        "type": "manual",
+        "default": ""
+      }
+    }
+  },
+  "community_list": {
+    "display_name": "MongoDB Community List",
+    "mappings": {
+      "Company Name": {
+        "type": "column",
+        "raw": "Account_name"
+      },
+      "Account Executive": {
+        "type": "column",
+        "raw": "Account_owner"
+      },
+      "Patch": {
+        "type": "column",
+        "raw": "account_country__c"
+      },
+      "Contact Name": {
+        "type": "column",
+        "raw": "Contact_name"
+      },
+      "Title / Role": {
+        "type": "column",
+        "raw": "title"
+      },
+      "Email": {
+        "type": "column",
+        "raw": "email"
+      },
+      "Phone": {
+        "type": "column",
+        "raw": "phone"
+      },
+      "Source / Signal": {
+        "type": "static",
+        "value": "MDB Skills"
+      }
+    }
+  },
+  "google_news": {
+    "display_name": "Google News Scrape",
+    "mappings": {
+      "Company Name": {
+        "type": "column",
+        "raw": "company_name"
+      },
+      "Patch": {
+        "type": "column",
+        "raw": "country"
+      },
+      "Source / Signal": {
+        "type": "static",
+        "value": "News"
+      }
+    }
+  },
+  "zoominfo_intent": {
+    "display_name": "ZoomInfo Intent Signal",
+    "mappings": {
+      "Company Name": {
+        "type": "column",
+        "raw": "Company"
+      },
+      "Source / Signal": {
+        "type": "static",
+        "value": "Intent Signals"
+      },
+      "Patch": {
+        "type": "manual",
+        "default": ""
+      }
+    }
+  },
+  "key_accounts": {
+    "display_name": "Key Accounts",
+    "mappings": {
+      "Source / Signal": {
+        "type": "column",
+        "raw": "Source / Signal"
+      },
+      "Patch": {
+        "type": "column",
+        "raw": "Patch"
+      },
+      "Account Executive": {
+        "type": "column",
+        "raw": "Account Executive"
+      },
+      "Company Name": {
+        "type": "column",
+        "raw": "Company Name"
+      },
+      "Contact Name": {
+        "type": "column",
+        "raw": "Contact Name"
+      },
+      "Title / Role": {
+        "type": "column",
+        "raw": "Title / Role"
+      },
+      "LinkedIn Profile": {
+        "type": "column",
+        "raw": "LinkedIn Profile"
+      },
+      "Interest / Role Research": {
+        "type": "column",
+        "raw": "Interest / Role Research"
+      },
+      "Subject Line": {
+        "type": "column",
+        "raw": "Subject Line"
+      },
+      "Messaging": {
+        "type": "column",
+        "raw": "Messaging"
+      },
+      "Phone": {
+        "type": "column",
+        "raw": "Phone"
+      },
+      "Email": {
+        "type": "column",
+        "raw": "Email"
+      },
+      "First Contact": {
+        "type": "column",
+        "raw": "First Contact"
+      },
+      "Last Contacted": {
+        "type": "column",
+        "raw": "Last Contacted"
+      },
+      "Status": {
+        "type": "column",
+        "raw": "Status"
+      },
+      "Touch Method": {
+        "type": "column",
+        "raw": "Total Touches"
+      },
+      "Sentiments": {
+        "type": "column",
+        "raw": "Sentiments"
+      },
+      "First Contact (Days)": {
+        "type": "column",
+        "raw": "First Contact (Days)"
+      },
+      "Last Contact (Days)": {
+        "type": "column",
+        "raw": "Last Contact (Days)"
+      },
+      "Nurturing Days": {
+        "type": "column",
+        "raw": "Nurturing Days"
+      },
+      "Potential Coffee Chats": {
+        "type": "column",
+        "raw": "Potential Coffee Chats"
+      },
+      "Reference Script": {
+        "type": "column",
+        "raw": "Reference Script"
+      },
+      "Whatsapp Message": {
+        "type": "column",
+        "raw": "Whatsapp Message"
+      },
+      "About": {
+        "type": "column",
+        "raw": "About"
+      },
+      "Experience Description": {
+        "type": "column",
+        "raw": "Experience Description"
+      },
+      "Latest Post": {
+        "type": "column",
+        "raw": "Latest Post"
+      },
+      "Tenure": {
+        "type": "column",
+        "raw": "Tenure"
+      },
+      "LinkedIn Phone": {
+        "type": "column",
+        "raw": "LinkedIn Phone"
+      },
+      "LinkedIn Email": {
+        "type": "column",
+        "raw": "LinkedIn Email"
+      },
+      "Cognism Phone": {
+        "type": "column",
+        "raw": "Cognism Phone"
+      },
+      "Cognism Email": {
+        "type": "column",
+        "raw": "Cognism Email"
+      },
+      "ZoomInfo Phone": {
+        "type": "column",
+        "raw": "ZoomInfo Phone"
+      },
+      "ZoomInfo Email": {
+        "type": "column",
+        "raw": "ZoomInfo Email"
+      }
+    }
+  }
+}
