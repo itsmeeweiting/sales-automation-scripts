@@ -1,0 +1,11 @@
+{
+  "zoominfo": {
+    "x-ziaccesstoken": "PASTE_ZOOMINFO_X-ZIACCESSTOKEN_HERE",
+    "x-ziid": "PASTE_ZOOMINFO_X-ZIID_HERE",
+    "x-zisession": "PASTE_ZOOMINFO_X-ZISESSION_HERE"
+  },
+  "leadiq": {
+    "_comment": "Bearer token, not a cookie -- see README-integration.md step 3 for how to capture it. Expires ~24h, re-capture when calls start 401'ing.",
+    "bearerToken": "PASTE_LEADIQ_BEARER_TOKEN_HERE"
+  }
+}
