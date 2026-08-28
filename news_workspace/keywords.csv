@@ -1,0 +1,79 @@
+industry,query,signal_type,patch,active
+Any,Malaysia AI platform OR AI application OR agentic AI OR RAG OR vector search,AI,Malaysia,YES
+Any,Malaysia customer data platform OR customer 360 OR unified customer view,Customer 360,Malaysia,YES
+Financial Services,Malaysia bank payments modernization OR payment platform OR digital banking platform,Payments Modernization,Malaysia,YES
+Financial Services,Malaysia bank fraud OR AML OR scam detection OR transaction monitoring,Fraud AML,Malaysia,YES
+Financial Services,Malaysia bank data lakehouse OR operational data store OR data consolidation,Operational Data Layer,Malaysia,YES
+Retail and Ecommerce,Malaysia retail personalization OR product recommendation OR product search,Search and Recommendations,Malaysia,YES
+Telecom and Media,Malaysia telco real time data platform OR event streaming OR customer app modernization,Real Time Apps,Malaysia,YES
+Public Sector,Malaysia digital identity OR citizen platform OR regulatory data platform,Citizen Services,Malaysia,YES
+Healthcare,Malaysia healthcare patient platform OR care platform modernization OR AI assistant,AI App Delivery,Malaysia,NO
+Manufacturing and Logistics,Malaysia supply chain visibility OR predictive maintenance OR IoT platform,Operational Intelligence,Malaysia,NO
+Any,Indonesia AI platform OR AI application OR agentic AI OR RAG OR vector search,AI,Indonesia,YES
+Any,Indonesia customer data platform OR customer 360 OR unified customer view,Customer 360,Indonesia,YES
+Financial Services,Indonesia bank fraud OR AML OR scam detection OR compliance monitoring,Fraud AML,Indonesia,YES
+Financial Services,Indonesia bank payment modernization OR transaction platform OR digital banking platform,Payments Modernization,Indonesia,YES
+Financial Services,Indonesia bank data consolidation OR operational data store OR core integration,Operational Data Layer,Indonesia,YES
+Retail and Ecommerce,Indonesia internal AI assistant OR knowledge assistant OR employee copilot,Internal AI Assistant,Indonesia,YES
+Retail and Ecommerce,Indonesia product search OR recommendation engine OR ecommerce personalization,Search and Recommendations,Indonesia,YES
+Retail and Ecommerce,Indonesia inventory platform OR order management modernization OR storefront data,Operational Apps,Indonesia,YES
+Travel and Mobility,Indonesia booking platform OR travel app modernization OR loyalty platform,App Modernization,Indonesia,NO
+Energy and Industrials,Indonesia monitoring dashboard OR industrial IoT platform OR operational analytics,Operational Intelligence,Indonesia,NO
+Any,Japan AI platform OR AI application OR agentic AI OR RAG OR vector search,AI,Japan,YES
+Any,Japan semantic search OR enterprise search OR hybrid search OR retrieval platform,Search,Japan,YES
+Software and AI,Japan AI startup OR LLM product OR applied AI platform OR AI agent product,AI Productization,Japan,YES
+Software and AI,Japan operational data layer OR application data platform OR schema flexibility,AI Ready Data Layer,Japan,YES
+Financial Services,Japan payments modernization OR fraud detection OR open finance platform,Payments and Fraud,Japan,YES
+Manufacturing and Industrial Tech,Japan smart factory platform OR industrial AI OR computer vision platform,Industrial AI,Japan,YES
+Retail and Commerce,Japan product search OR personalization engine OR retail AI platform,Search and Recommendations,Japan,YES
+Logistics and Mobility,Japan real time operations platform OR fleet platform OR logistics AI,Real Time Apps,Japan,NO
+Healthcare,Japan clinical data platform OR patient search OR medical AI platform,AI App Delivery,Japan,NO
+Telecommunications,Japan customer app modernization OR service operations platform OR network analytics,App Modernization,Japan,NO
+Manufacturing and Logistics,Malaysia industrial IoT OR connected devices OR telemetry platform OR predictive maintenance,Operational Intelligence,Malaysia,YES
+Enterprise,Malaysia mainframe modernization OR COBOL migration OR host system replacement OR data offload,Mainframe Modernization,Malaysia,YES
+Energy and Industrials,Indonesia industrial IoT OR monitoring dashboard OR sensor data platform OR fleet monitoring,Operational Intelligence,Indonesia,YES
+Enterprise,Indonesia legacy modernization OR core system modernization OR mainframe replacement OR data offload,Mainframe Modernization,Indonesia,YES
+Manufacturing and Industrial Tech,Japan smart factory OR industrial IoT OR edge data platform OR machine data platform,Operational Intelligence,Japan,YES
+Enterprise,Japan mainframe modernization OR core system modernization OR COBOL migration OR host system replacement,Mainframe Modernization,Japan,YES
+Financial Services,Malaysia core banking modernization OR legacy banking platform OR mainframe offload,Mainframe Modernization,Malaysia,YES
+Financial Services,Malaysia customer onboarding platform OR digital onboarding OR eKYC platform,Customer 360,Malaysia,YES
+Financial Services,Malaysia transaction monitoring platform OR AML modernization OR fraud platform,Fraud AML,Malaysia,YES
+Telecom and Media,Malaysia BSS OSS modernization OR telco customer data platform OR network analytics platform,Operational Data Layer,Malaysia,YES
+Retail and Ecommerce,Malaysia loyalty platform OR order management modernization OR inventory visibility platform,Operational Apps,Malaysia,YES
+Public Sector,Malaysia digital government platform OR citizen services platform OR regulatory reporting platform,Citizen Services,Malaysia,YES
+Manufacturing and Logistics,Malaysia edge data platform OR machine telemetry OR smart factory platform,Operational Intelligence,Malaysia,YES
+Financial Services,Indonesia core banking modernization OR legacy banking platform OR mainframe offload,Mainframe Modernization,Indonesia,YES
+Financial Services,Indonesia digital onboarding OR eKYC platform OR customer onboarding platform,Customer 360,Indonesia,YES
+Financial Services,Indonesia transaction monitoring platform OR AML modernization OR fraud platform,Fraud AML,Indonesia,YES
+Retail and Ecommerce,Indonesia loyalty platform OR customer data platform OR recommendation platform,Customer 360,Indonesia,YES
+Travel and Mobility,Indonesia fleet platform OR real time asset tracking OR logistics visibility platform,Real Time Apps,Indonesia,YES
+Energy and Industrials,Indonesia edge platform OR machine telemetry OR plant monitoring platform,Operational Intelligence,Indonesia,YES
+Public Sector,Indonesia digital government platform OR public services platform OR regulatory reporting platform,Citizen Services,Indonesia,YES
+Financial Services,Japan core banking modernization OR legacy banking platform OR mainframe offload,Mainframe Modernization,Japan,YES
+Financial Services,Japan customer onboarding platform OR digital onboarding OR eKYC platform,Customer 360,Japan,YES
+Financial Services,Japan AML platform OR transaction monitoring platform OR fraud modernization,Fraud AML,Japan,YES
+Software and AI,Japan developer platform OR AI application platform OR agent platform,AI Productization,Japan,YES
+Manufacturing and Industrial Tech,Japan factory data platform OR equipment telemetry OR predictive maintenance platform,Operational Intelligence,Japan,YES
+Retail and Commerce,Japan loyalty platform OR customer data platform OR personalization engine,Customer 360,Japan,YES
+Telecommunications,Japan OSS BSS modernization OR telco data platform OR network analytics platform,Operational Data Layer,Japan,YES
+Any,Japan AI startup funding OR generative AI startup OR agent startup,Budget/Funding,Japan,YES
+Any,Japan startup funding OR Series A OR Series B OR venture funding,Budget/Funding,Japan,YES
+Any,Japan technology company expansion OR new platform launch OR product launch,Expansion,Japan,YES
+Any,Japan CTO appointed OR CIO appointed OR chief data officer OR VP engineering,Leadership change,Japan,YES
+Any,Japan enterprise RFP OR IT tender OR digital transformation tender,RFP,Japan,YES
+Software and AI,Japan developer tools startup OR software platform startup OR B2B SaaS startup,New Logo,Japan,YES
+Software and AI,Japan AI application platform OR enterprise AI startup OR applied AI company,AI Productization,Japan,YES
+Software and AI,Japan data platform startup OR analytics platform startup OR search startup,AI Ready Data Layer,Japan,YES
+Financial Services,Japan fintech startup OR digital payments startup OR embedded finance startup,New Logo,Japan,YES
+Financial Services,Japan digital bank OR neobank OR online brokerage platform OR wealthtech,Expansion,Japan,YES
+Financial Services,Japan regtech OR compliance platform OR fraud startup OR AML platform,Fraud AML,Japan,YES
+Retail and Commerce,Japan ecommerce enablement OR retail tech startup OR loyalty startup,New Logo,Japan,YES
+Retail and Commerce,Japan personalization platform OR recommendation startup OR customer data platform,Customer 360,Japan,YES
+Manufacturing and Industrial Tech,Japan industrial software startup OR factory software OR industrial AI startup,New Logo,Japan,YES
+Manufacturing and Industrial Tech,Japan robotics software OR machine data platform OR smart factory startup,Operational Intelligence,Japan,YES
+Logistics and Mobility,Japan logistics tech startup OR fleet platform OR supply chain software startup,New Logo,Japan,YES
+Travel and Mobility,Japan travel tech startup OR booking platform OR mobility platform,New Logo,Japan,YES
+Healthcare,Japan healthtech startup OR digital health platform OR medical AI startup,New Logo,Japan,YES
+Telecommunications,Japan telecom platform OR connectivity platform OR network software company,New Logo,Japan,YES
+Media and Entertainment,Japan gaming platform OR live ops platform OR player data platform,Real Time Apps,Japan,YES
+Public Sector,Japan govtech startup OR digital identity startup OR public services platform,New Logo,Japan,YES

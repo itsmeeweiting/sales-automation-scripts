@@ -1,0 +1,41 @@
+industry,query,signal_type,patch,active
+Any,Japan AI platform OR AI application OR agentic AI OR RAG OR vector search,AI,Japan,YES
+Any,Japan semantic search OR enterprise search OR hybrid search OR retrieval platform,Search,Japan,YES
+Software and AI,Japan AI startup OR LLM product OR applied AI platform OR AI agent product,AI Productization,Japan,YES
+Software and AI,Japan operational data layer OR application data platform OR schema flexibility,AI Ready Data Layer,Japan,YES
+Financial Services,Japan payments modernization OR fraud detection OR open finance platform,Payments and Fraud,Japan,YES
+Manufacturing and Industrial Tech,Japan smart factory platform OR industrial AI OR computer vision platform,Industrial AI,Japan,YES
+Retail and Commerce,Japan product search OR personalization engine OR retail AI platform,Search and Recommendations,Japan,YES
+Logistics and Mobility,Japan real time operations platform OR fleet platform OR logistics AI,Real Time Apps,Japan,YES
+Healthcare,Japan clinical data platform OR patient search OR medical AI platform,AI App Delivery,Japan,YES
+Telecommunications,Japan customer app modernization OR service operations platform OR network analytics,App Modernization,Japan,YES
+Manufacturing and Industrial Tech,Japan smart factory OR industrial IoT OR edge data platform OR machine data platform,Operational Intelligence,Japan,YES
+Enterprise,Japan mainframe modernization OR core system modernization OR COBOL migration OR host system replacement,Mainframe Modernization,Japan,YES
+Financial Services,Japan core banking modernization OR legacy banking platform OR mainframe offload,Mainframe Modernization,Japan,YES
+Financial Services,Japan customer onboarding platform OR digital onboarding OR eKYC platform,Customer 360,Japan,YES
+Financial Services,Japan AML platform OR transaction monitoring platform OR fraud modernization,Fraud AML,Japan,YES
+Software and AI,Japan developer platform OR AI application platform OR agent platform,AI Productization,Japan,YES
+Manufacturing and Industrial Tech,Japan factory data platform OR equipment telemetry OR predictive maintenance platform,Operational Intelligence,Japan,YES
+Retail and Commerce,Japan loyalty platform OR customer data platform OR personalization engine,Customer 360,Japan,YES
+Telecommunications,Japan OSS BSS modernization OR telco data platform OR network analytics platform,Operational Data Layer,Japan,YES
+Any,Japan AI startup funding OR generative AI startup OR agent startup,Budget/Funding,Japan,YES
+Any,Japan startup funding OR Series A OR Series B OR venture funding,Budget/Funding,Japan,YES
+Any,Japan technology company expansion OR new platform launch OR product launch,Expansion,Japan,YES
+Any,Japan CTO appointed OR CIO appointed OR chief data officer OR VP engineering,Leadership change,Japan,YES
+Any,Japan enterprise RFP OR IT tender OR digital transformation tender,RFP,Japan,YES
+Software and AI,Japan developer tools startup OR software platform startup OR B2B SaaS startup,New Logo,Japan,YES
+Software and AI,Japan AI application platform OR enterprise AI startup OR applied AI company,AI Productization,Japan,YES
+Software and AI,Japan data platform startup OR analytics platform startup OR search startup,AI Ready Data Layer,Japan,YES
+Financial Services,Japan fintech startup OR digital payments startup OR embedded finance startup,New Logo,Japan,YES
+Financial Services,Japan digital bank OR neobank OR online brokerage platform OR wealthtech,Expansion,Japan,YES
+Financial Services,Japan regtech OR compliance platform OR fraud startup OR AML platform,Fraud AML,Japan,YES
+Retail and Commerce,Japan ecommerce enablement OR retail tech startup OR loyalty startup,New Logo,Japan,YES
+Retail and Commerce,Japan personalization platform OR recommendation startup OR customer data platform,Customer 360,Japan,YES
+Manufacturing and Industrial Tech,Japan industrial software startup OR factory software OR industrial AI startup,New Logo,Japan,YES
+Manufacturing and Industrial Tech,Japan robotics software OR machine data platform OR smart factory startup,Operational Intelligence,Japan,YES
+Logistics and Mobility,Japan logistics tech startup OR fleet platform OR supply chain software startup,New Logo,Japan,YES
+Travel and Mobility,Japan travel tech startup OR booking platform OR mobility platform,New Logo,Japan,YES
+Healthcare,Japan healthtech startup OR digital health platform OR medical AI startup,New Logo,Japan,YES
+Telecommunications,Japan telecom platform OR connectivity platform OR network software company,New Logo,Japan,YES
+Media and Entertainment,Japan gaming platform OR live ops platform OR player data platform,Real Time Apps,Japan,YES
+Public Sector,Japan govtech startup OR digital identity startup OR public services platform,New Logo,Japan,YES
