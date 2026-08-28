@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scripts — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Scripts</h1>
+        <p>Run background scripts and watch live output. Starting with a dummy test before any real scripts get wired in here.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  <div class="scripts-list">
+    {% for sid, label, description in scripts %}
+    <div class="script-card">
+      <div class="script-card-info">
+        <div class="script-card-label">{{ label }}</div>
+        <div class="script-card-desc">{{ description }}</div>
+      </div>
+      <button class="btn-export" style="border:none;" type="button" data-script-id="{{ sid }}" onclick="runScript(this)">Run</button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="script-log-panel" class="script-log-panel" style="display:none;">
+    <div class="script-log-header">
+      <span id="script-log-title">—</span>
+      <span id="script-log-status" class="script-status-badge">idle</span>
+    </div>
+    <pre id="script-log-output" class="script-log-output"></pre>
+  </div>
+
+  <script>
+    let pollTimer = null;
+
+    function runScript(btn) {
+      const scriptId = btn.dataset.scriptId;
+      const label = btn.closest('.script-card').querySelector('.script-card-label').textContent;
+
+      fetch('/scripts/run/' + scriptId, { method: 'POST' })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            alert(data.error || 'Could not start script.');
+            return;
+          }
+          showLogPanel(label);
+          pollJob(data.job_id);
+        })
+        .catch(function () {
+          alert('Could not reach the server.');
+        });
+    }
+
+    function showLogPanel(title) {
+      document.getElementById('script-log-panel').style.display = 'block';
+      document.getElementById('script-log-title').textContent = title;
+      document.getElementById('script-log-output').textContent = '';
+      setStatusBadge('running');
+    }
+
+    function setStatusBadge(status) {
+      const badge = document.getElementById('script-log-status');
+      badge.textContent = status;
+      badge.className = 'script-status-badge status-' + status;
+    }
+
+    function pollJob(jobId) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(function () {
+        fetch('/scripts/status/' + jobId)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.error) {
+              clearInterval(pollTimer);
+              setStatusBadge('error');
+              return;
+            }
+            document.getElementById('script-log-output').textContent = data.log.join('\n');
+            setStatusBadge(data.status);
+            if (data.status === 'done' || data.status === 'error') {
+              clearInterval(pollTimer);
+            }
+          })
+          .catch(function () {
+            clearInterval(pollTimer);
+          });
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

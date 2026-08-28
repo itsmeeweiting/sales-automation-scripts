@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>News Scrape Preview — {{ filename }}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; margin: 30px; color: #1a1a1a; }
+  h1 { font-size: 18px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 18px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f3; position: sticky; top: 0; }
+  td.body, td.headline { max-width: 320px; }
+  .level-high { background: #e6f4ea; }
+  .level-medium { background: #fff8e1; }
+  .level-low { color: #999; }
+  a.back { font-size: 13px; }
+  .glean-panel { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; background: #f9f9f7; }
+  .glean-panel textarea { width: 100%; min-height: 70px; font-family: inherit; font-size: 13px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+  .glean-panel button { background: #00684A; color: white; border: none; padding: 9px 16px; border-radius: 6px; font-size: 13.5px; cursor: pointer; margin-top: 8px; }
+  .glean-panel button:disabled { background: #999; cursor: default; }
+  .glean-status { font-size: 13px; margin-top: 8px; }
+  .glean-status.running { color: #b8860b; }
+  .glean-status.done { color: #00684A; }
+  .glean-status.error { color: #b00020; }
+  #gleanLog { background: #0d1117; color: #c9d1d9; font-family: monospace; font-size: 12px; padding: 12px; border-radius: 6px; height: 200px; overflow-y: auto; white-space: pre-wrap; margin-top: 10px; display: none; }
+  .selected-count { font-size: 13px; color: #444; }
+</style>
+</head>
+<body>
+
+<a class="back" href="{{ url_for('news_page') }}">&larr; back to News Scraper</a>
+<h1>{{ filename }}</h1>
+<div class="sub">{{ row_count }} articles &middot; <a href="{{ url_for('news_download', filename=filename) }}">download CSV</a></div>
+
+<div class="glean-panel">
+  <strong>Send to Glean Report</strong>
+  <p style="font-size:12.5px; color:#666; margin:6px 0 10px;">
+    Check rows below (or leave all unchecked to send everything in this file), review/edit the prompt, then send.
+    Rows with no usable article body (failed fetches, paywalls) are skipped automatically.
+  </p>
+  <textarea id="gleanPrompt">{{ default_prompt }}</textarea>
+  <br>
+  <span class="selected-count"><span id="selectedCount">0</span> row(s) selected (0 = send all)</span>
+  <br>
+  <button id="gleanBtn" onclick="sendToGlean()">Send to Glean Report</button>
+  <span id="gleanStatus" class="glean-status"></span>
+  <div id="gleanLog"></div>
+</div>
+
+<table>
+  <tr>
+    <th><input type="checkbox" id="selectAllRows"></th>
+    {% for h in headers %}<th>{{ h }}</th>{% endfor %}
+  </tr>
+  {% for row in rows %}
+  <tr class="level-{{ row.get('relevance_level', '') }}">
+    <td><input type="checkbox" class="row-cb" value="{{ loop.index0 }}"></td>
+    {% for h in headers %}
+    <td class="{{ 'body' if h == 'body' else 'headline' if h == 'headline' else '' }}">{{ row.get(h, '') }}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+
+<script>
+const rowCbs = document.querySelectorAll('.row-cb');
+const selectAllRows = document.getElementById('selectAllRows');
+const selectedCountEl = document.getElementById('selectedCount');
+
+function updateSelectedCount() {
+  selectedCountEl.textContent = document.querySelectorAll('.row-cb:checked').length;
+}
+rowCbs.forEach(cb => cb.addEventListener('change', updateSelectedCount));
+selectAllRows.addEventListener('change', () => {
+  rowCbs.forEach(cb => { cb.checked = selectAllRows.checked; });
+  updateSelectedCount();
+});
+
+let gleanPollTimer = null;
+
+function sendToGlean() {
+  const btn = document.getElementById('gleanBtn');
+  const log = document.getElementById('gleanLog');
+  const statusEl = document.getElementById('gleanStatus');
+  const selected = Array.from(document.querySelectorAll('.row-cb:checked')).map(cb => cb.value);
+
+  btn.disabled = true;
+  log.style.display = 'block';
+  log.textContent = '';
+  statusEl.textContent = 'starting...';
+  statusEl.className = 'glean-status running';
+
+  const formData = new FormData();
+  selected.forEach(idx => formData.append('rows', idx));
+  formData.append('prompt', document.getElementById('gleanPrompt').value);
+
+  fetch('{{ url_for("news_send_to_glean", filename=filename) }}', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        statusEl.textContent = data.error;
+        statusEl.className = 'glean-status error';
+        btn.disabled = false;
+        return;
+      }
+      statusEl.textContent = 'sending ' + data.row_count + ' article(s) to Glean -- a browser window may open, log in if prompted...';
+      pollGlean(data.job_id);
+    });
+}
+
+function pollGlean(jobId) {
+  const log = document.getElementById('gleanLog');
+  const statusEl = document.getElementById('gleanStatus');
+  const btn = document.getElementById('gleanBtn');
+
+  gleanPollTimer = setInterval(() => {
+    fetch('/news/glean_report/status/' + jobId)
+      .then(r => r.json())
+      .then(data => {
+        log.textContent = data.log.join('\n');
+        log.scrollTop = log.scrollHeight;
+        statusEl.textContent = data.status;
+        statusEl.className = 'glean-status ' + data.status;
+
+        if (data.status === 'done' || data.status === 'error') {
+          clearInterval(gleanPollTimer);
+          btn.disabled = false;
+          if (data.status === 'done') {
+            statusEl.innerHTML = 'done — <a href="/news/glean_report/view">view report</a>';
+          }
+        }
+      });
+  }, 1500);
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ option_label }} — Preview — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .preview-wrap { padding: 24px; overflow-x: auto; }
+    .preview-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .preview-table th, .preview-table td {
+      border: 1px solid #ddd; padding: 6px 10px; text-align: left;
+      max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .preview-table th { background: #f5f5f5; position: sticky; top: 0; }
+    .preview-actions-row { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    .preview-empty { color: #777; padding: 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>{{ option_label }} — Preview</h1>
+        <p>{{ row_count }} row{{ 's' if row_count != 1 else '' }} staged · review before committing to the tracker</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('intent_signal_page') }}">← Back to Intent Signal Scrap</a>
+    </div>
+  </header>
+
+  <div class="preview-wrap">
+    <div class="preview-actions-row">
+      <form method="post" action="{{ url_for('intent_contact_preview_commit') if staging_kind == 'contact' else url_for('intent_linkedin_preview_commit') }}"
+            onsubmit="return confirm('Commit all {{ row_count }} row(s) to the master tracker? This cannot be undone.');">
+        <button class="btn-toggle" type="submit">Commit all to Tracker</button>
+      </form>
+      <a class="btn-toggle" href="{{ url_for('intent_contact_preview_export') if staging_kind == 'contact' else url_for('intent_linkedin_preview_export') }}">Export CSV</a>
+    </div>
+
+    {% if rows %}
+    <table class="preview-table">
+      <thead>
+        <tr>
+          <th></th>
+          {% for h in headers %}<th>{{ h }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <form method="post" action="{{ url_for('intent_contact_preview_delete_row') if staging_kind == 'contact' else url_for('intent_linkedin_preview_delete_row') }}"
+                  onsubmit="return confirm('Remove this row from the staged batch?');">
+              <input type="hidden" name="row" value="{{ loop.index0 }}">
+              <button type="submit" title="Remove this row" style="cursor:pointer;">✕</button>
+            </form>
+          </td>
+          {% for h in headers %}
+          <td title="{{ row.get(h, '') }}">{{ row.get(h, '') }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="preview-empty">Nothing staged yet — run the scrape from the Intent Signal Scrap page first.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

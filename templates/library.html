@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reference libraries — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Freeze the header row so column names stay visible while scrolling
+       down a long library table.
+
+       This table's wrapper likely has overflow-x set (for horizontal
+       scrolling across many columns) in style.css. Per the CSS spec, once
+       one axis has a non-visible overflow value the other axis is forced
+       to behave the same way -- which silently breaks "position: sticky"
+       relative to the page. Giving the wrapper an explicit height turns
+       it into its own scroll container, so the sticky header has a
+       well-defined box to stick within instead of depending on the page. */
+    #library-table-wrap {
+      max-height: 75vh;
+      overflow: auto;
+    }
+    #library-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f5f5f3;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Reference libraries</h1>
+        <p>{{ row_count }} row{{ 's' if row_count != 1 else '' }} · click any cell to edit</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+    <div class="tabs">
+      {% for tab_name, tab_label in tabs %}
+      <a class="tab-link {{ 'active' if tab_name == name else '' }}" href="{{ url_for('library_page', name=tab_name) }}">{{ tab_label }}</a>
+      {% endfor %}
+    </div>
+  </header>
+
+  <details class="add-contact">
+    <summary>+ Add row manually</summary>
+    <form method="post" action="{{ url_for('library_add_row', name=name) }}">
+      <div class="add-grid">
+        {% for h in headers %}
+        <label>
+          {{ h }}
+          <input type="text" name="{{ h }}">
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit">Add row</button>
+    </form>
+  </details>
+
+  <details class="add-contact">
+    <summary>+ Bulk import CSV</summary>
+    <form method="post" action="{{ url_for('library_import', name=name) }}" enctype="multipart/form-data">
+      <p style="font-size:12px;color:#737373;margin:0 0 10px;">Upload a CSV with the same column names as this library. Extra or missing columns are fine — only matching names get copied in, everything else is ignored.</p>
+      <input type="file" name="csv_file" accept=".csv" required>
+      <button type="submit" class="btn-export" style="border:none; margin-left:8px;">Import and append</button>
+    </form>
+  </details>
+
+  {% if headers %}
+  <div class="table-wrap" id="library-table-wrap" style="margin: 16px 24px;">
+    <table id="library-table">
+      <thead>
+        <tr>
+          <th class="actions-col"></th>
+          {% for h in headers %}
+          <th style="width: 160px; max-width: 160px;">{{ h }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}">
+          <td class="actions-col">
+            <form method="post" action="{{ url_for('library_delete_row', name=name) }}" onsubmit="return confirm('Delete this row? This cannot be undone.');">
+              <input type="hidden" name="row" value="{{ row_idx }}">
+              <button type="submit" class="btn-delete" title="Delete this row">🗑</button>
+            </form>
+          </td>
+          {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          <td class="{{ 'li-cell' if h in ('Company Website', 'Salesforce Link') else '' }}">
+            <div class="cell-content" contenteditable="true" data-col="{{ h }}" style="width: 100%; max-width: 160px;">{{ val }}</div>
+            {% if h in ('Company Website', 'Salesforce Link') and val %}
+            <a class="open-link" href="{{ val }}" target="_blank" rel="noopener" title="Open link">↗</a>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="{{ headers|length + 1 }}" class="empty-row">No rows yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">Could not find this file next to app.py.</p>
+  {% endif %}
+
+  <script>
+    document.querySelectorAll('.cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        const newValue = cell.textContent;
+        if (newValue === originalValue) return;
+        const tr = cell.closest('tr');
+        const rowIndex = tr.dataset.row;
+        const column = cell.dataset.col;
+        fetch('{{ url_for("library_update_cell", name=name) }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ row: rowIndex, column: column, value: newValue }),
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('save failed');
+            cell.classList.add('saved-flash');
+            setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+          })
+          .catch(function () {
+            cell.textContent = originalValue;
+            alert('Could not save that edit — reverted.');
+          });
+      });
+    });
+  </script>
+</body>
+</html>

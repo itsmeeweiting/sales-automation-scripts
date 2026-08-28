@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Call dashboard — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .call-filters {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0 24px 16px;
+    }
+    .call-filters select {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid var(--border, #d7dbdd);
+      border-radius: 6px;
+      background: #fff;
+      color: inherit;
+    }
+    .call-filters .filter-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      cursor: pointer;
+    }
+    .call-filters .filter-count {
+      margin-left: auto;
+      font-size: 12px;
+      font-family: 'IBM Plex Mono', monospace;
+      color: var(--text-muted, #6b7280);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Call dashboard</h1>
+        <p>{{ count }} contact{{ 's' if count != 1 else '' }} · click a contact for full details, click WhatsApp to message</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+    <div class="tabs">
+      <a class="tab-link {{ 'active' if active_tab != 'stats' else '' }}" href="{{ url_for('call_dashboard', tab='list', account=account_filter, status=status_filter) }}">Call dashboard</a>
+      <a class="tab-link {{ 'active' if active_tab == 'stats' else '' }}" href="{{ url_for('call_dashboard', tab='stats') }}">Call statistics</a>
+    </div>
+  </header>
+
+  {% if active_tab == 'stats' %}
+
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table class="stats-table">
+      <thead>
+        <tr>
+          <th data-col="0">Account <span class="sort-indicator"></span></th>
+          <th data-col="1">Account Executive <span class="sort-indicator"></span></th>
+          <th data-col="2">Patch <span class="sort-indicator"></span></th>
+          <th data-col="3">Total <span class="sort-indicator"></span></th>
+          {% for s in status_options %}
+          <th data-col="{{ loop.index0 + 4 }}">{{ s }} <span class="sort-indicator"></span></th>
+          {% endfor %}
+          <th data-col="{{ status_options|length + 4 }}">No status <span class="sort-indicator"></span></th>
+          <th data-col="{{ status_options|length + 5 }}">Phones on file <span class="sort-indicator"></span></th>
+          <th data-col="{{ status_options|length + 6 }}">Last contacted <span class="sort-indicator"></span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for acc in stats %}
+        <tr data-row="{{ loop.index0 }}">
+          <td><a href="{{ url_for('call_dashboard', tab='list', account=acc.company) }}">{{ acc.company }}</a></td>
+          <td>{{ acc.account_executive or '—' }}</td>
+          <td>{{ acc.patch or '—' }}</td>
+          <td>{{ acc.total }}</td>
+          {% for s in status_options %}
+          {% set n = acc.status_counts.get(s, 0) %}
+          <td>
+            {% if n > 0 %}
+            <a href="{{ url_for('call_dashboard', tab='list', account=acc.company, status=s) }}">{{ n }}</a>
+            {% else %}
+            <span class="stat-zero">0</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td>{{ acc.blank_status }}</td>
+          <td>{{ acc.phone_count }} / {{ acc.total }}</td>
+          <td>{{ acc.last_contacted or '—' }}</td>
+        </tr>
+        {% endfor %}
+        {% if not stats %}
+        <tr class="empty-row-tr"><td colspan="{{ status_options|length + 7 }}" class="empty-row">No contacts yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+
+  {% if account_filter or status_filter %}
+  <div class="filter-banner">
+    Filtered by
+    {% if account_filter %}<strong>{{ account_filter }}</strong>{% endif %}
+    {% if account_filter and status_filter %} · {% endif %}
+    {% if status_filter %}<strong>{{ status_filter }}</strong>{% endif %}
+    <a href="{{ url_for('call_dashboard', tab='list') }}">Clear filter</a>
+  </div>
+  {% endif %}
+
+  <div class="call-search">
+    <input type="text" id="call-search-input" placeholder="Search by company, contact, or title…">
+  </div>
+
+  <div class="call-filters">
+    <select id="filter-status">
+      <option value="">All statuses</option>
+      {% for s in status_options %}
+      <option value="{{ s|lower }}" {{ 'selected' if status_filter and status_filter.lower() == s.lower() else '' }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <select id="filter-patch">
+      <option value="">All patches</option>
+      {% for p in patch_options %}
+      <option value="{{ p|lower }}">{{ p }}</option>
+      {% endfor %}
+    </select>
+    <select id="filter-company">
+      <option value="">All companies</option>
+      {% for co in company_options %}
+      <option value="{{ co|lower }}" {{ 'selected' if account_filter and account_filter.lower() == co.lower() else '' }}>{{ co }}</option>
+      {% endfor %}
+    </select>
+    <label class="filter-checkbox">
+      <input type="checkbox" id="filter-has-phone">
+      Has phone number only
+    </label>
+    <button type="button" id="filter-reset" class="btn-toggle">Reset filters</button>
+    <span id="filter-count" class="filter-count"></span>
+  </div>
+
+  <div class="call-layout">
+    <div class="call-list-col">
+      {% for c in contacts %}
+      <div class="call-card"
+           data-search="{{ (c.company ~ ' ' ~ c.contact ~ ' ' ~ c.title)|lower }}"
+           data-status="{{ (c.status or '')|lower }}"
+           data-patch="{{ (c.patch or '')|lower }}"
+           data-company="{{ (c.company or '')|lower }}"
+           data-hasphone="{{ '1' if c.phone else '0' }}"
+           data-contact='{{ c | tojson }}'>
+        <div class="call-card-main">
+          <div class="call-card-name">{{ c.contact or '—' }}</div>
+          <div class="call-card-sub">{{ c.title }}{{ ' · ' if c.title and c.company else '' }}{{ c.company }}</div>
+          {% if c.patch %}<div class="call-card-patch">{{ c.patch }}{{ ' · ' + c.status if c.status else '' }}</div>{% endif %}
+        </div>
+        <div class="call-card-actions">
+          {% if c.wa_link %}
+          <a class="btn-whatsapp" href="{{ c.wa_link }}" target="_blank" rel="noopener">WhatsApp</a>
+          {% else %}
+          <span class="no-phone">No phone on file</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if not contacts %}
+      <p class="empty">No contacts match this view.</p>
+      {% endif %}
+    </div>
+
+    <div class="call-detail-col">
+      <div id="call-detail" class="call-detail-card">
+        <p class="call-detail-placeholder">Click a contact on the left to see their full details here.</p>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+
+  <script>
+    // Click-to-sort for the statistics table: same pattern as the main
+    // tracker -- ascending, descending, then back to original order.
+    (function () {
+      const statsTable = document.querySelector('.stats-table');
+      if (!statsTable) return;
+      let statsSortState = { col: null, direction: null };
+      const statsHeaderCells = statsTable.querySelectorAll('thead th');
+      const statsTbody = statsTable.querySelector('tbody');
+
+      function applyStatsSort() {
+        const rows = Array.from(statsTbody.querySelectorAll('tr')).filter(function (tr) {
+          return !tr.classList.contains('empty-row-tr');
+        });
+        rows.sort(function (a, b) {
+          if (statsSortState.col === null) {
+            return parseInt(a.dataset.row, 10) - parseInt(b.dataset.row, 10);
+          }
+          const aText = a.children[statsSortState.col].textContent.trim();
+          const bText = b.children[statsSortState.col].textContent.trim();
+          const aNum = parseFloat(aText);
+          const bNum = parseFloat(bText);
+          let cmp;
+          if (aText !== '' && bText !== '' && !isNaN(aNum) && !isNaN(bNum)) {
+            cmp = aNum - bNum;
+          } else {
+            cmp = aText.localeCompare(bText, undefined, { sensitivity: 'base' });
+          }
+          return statsSortState.direction === 'desc' ? -cmp : cmp;
+        });
+        rows.forEach(function (tr) { statsTbody.appendChild(tr); });
+      }
+
+      function updateStatsSortIndicators() {
+        statsHeaderCells.forEach(function (th) {
+          const indicator = th.querySelector('.sort-indicator');
+          const col = parseInt(th.dataset.col, 10);
+          indicator.textContent = statsSortState.col === col ? (statsSortState.direction === 'asc' ? '▲' : '▼') : '';
+        });
+      }
+
+      statsHeaderCells.forEach(function (th) {
+        th.addEventListener('click', function () {
+          const col = parseInt(th.dataset.col, 10);
+          if (statsSortState.col !== col) {
+            statsSortState = { col: col, direction: 'asc' };
+          } else if (statsSortState.direction === 'asc') {
+            statsSortState.direction = 'desc';
+          } else {
+            statsSortState = { col: null, direction: null };
+          }
+          applyStatsSort();
+          updateStatsSortIndicators();
+        });
+      });
+    })();
+
+    (function () {
+      const searchInput = document.getElementById('call-search-input');
+      const statusSelect = document.getElementById('filter-status');
+      const patchSelect = document.getElementById('filter-patch');
+      const companySelect = document.getElementById('filter-company');
+      const hasPhoneCheckbox = document.getElementById('filter-has-phone');
+      const resetBtn = document.getElementById('filter-reset');
+      const countEl = document.getElementById('filter-count');
+      const cards = document.querySelectorAll('.call-card');
+      if (!cards.length) return;
+
+      function applyFilters() {
+        const q = (searchInput ? searchInput.value.trim().toLowerCase() : '');
+        const status = statusSelect ? statusSelect.value : '';
+        const patch = patchSelect ? patchSelect.value : '';
+        const company = companySelect ? companySelect.value : '';
+        const phoneOnly = hasPhoneCheckbox ? hasPhoneCheckbox.checked : false;
+
+        let visible = 0;
+        cards.forEach(function (card) {
+          const matches =
+            card.dataset.search.includes(q) &&
+            (!status || card.dataset.status === status) &&
+            (!patch || card.dataset.patch === patch) &&
+            (!company || card.dataset.company === company) &&
+            (!phoneOnly || card.dataset.hasphone === '1');
+          card.style.display = matches ? '' : 'none';
+          if (matches) visible++;
+        });
+        if (countEl) countEl.textContent = visible + ' of ' + cards.length + ' shown';
+      }
+
+      [searchInput, statusSelect, patchSelect, companySelect, hasPhoneCheckbox].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener(el.tagName === 'INPUT' && el.type === 'text' ? 'input' : 'change', applyFilters);
+      });
+
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          if (searchInput) searchInput.value = '';
+          if (statusSelect) statusSelect.value = '';
+          if (patchSelect) patchSelect.value = '';
+          if (companySelect) companySelect.value = '';
+          if (hasPhoneCheckbox) hasPhoneCheckbox.checked = false;
+          applyFilters();
+        });
+      }
+
+      applyFilters();
+    })();
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+    function escapeAttr(str) {
+      return (str || '').replace(/"/g, '&quot;');
+    }
+
+    function showCallDetail(c) {
+      const detail = document.getElementById('call-detail');
+      detail.innerHTML =
+        '<div class="detail-header">' +
+          '<div class="detail-name">' + escapeHtml(c.contact || '—') + '</div>' +
+          '<div class="detail-sub">' + escapeHtml(c.title) + (c.title && c.company ? ' · ' : '') + escapeHtml(c.company) + '</div>' +
+        '</div>' +
+        '<div class="detail-grid">' +
+          '<div><span class="detail-label">Source / Signal</span><span>' + escapeHtml(c.source || '—') + '</span></div>' +
+          '<div><span class="detail-label">LinkedIn</span>' + (c.linkedin ? '<a href="' + escapeAttr(c.linkedin) + '" target="_blank" rel="noopener">Open profile ↗</a>' : '<span>—</span>') + '</div>' +
+          '<div><span class="detail-label">Phone</span><span>' + escapeHtml(c.phone || '—') + '</span></div>' +
+          '<div><span class="detail-label">Email</span><span>' + escapeHtml(c.email || '—') + '</span></div>' +
+          '<div><span class="detail-label">First contacted</span><span>' + escapeHtml(c.first_contact || '—') + '</span></div>' +
+          '<div><span class="detail-label">Last contacted</span><span>' + escapeHtml(c.last_contacted || '—') + '</span></div>' +
+          '<div><span class="detail-label">Status</span><span>' + escapeHtml(c.status || '—') + '</span></div>' +
+          '<div><span class="detail-label">Sentiments</span><span>' + escapeHtml(c.sentiments || '—') + '</span></div>' +
+        '</div>' +
+        '<div class="detail-script">' +
+          '<div class="detail-script-label">Interest / Role Research</div>' +
+          '<div class="detail-script-body">' + (c.interest_research ? escapeHtml(c.interest_research) : '<span class="no-phone">Not generated yet</span>') + '</div>' +
+        '</div>' +
+        '<div class="detail-script">' +
+          '<div class="detail-script-label">Reference script</div>' +
+          '<div class="detail-script-body">' + (c.reference_script ? escapeHtml(c.reference_script) : '<span class="no-phone">Not generated yet</span>') + '</div>' +
+        '</div>' +
+        '<div class="detail-script">' +
+          '<div class="detail-script-label">WhatsApp message' + (c.whatsapp_message ? ' <button class="copy-btn" type="button" data-copy="' + escapeAttr(c.whatsapp_message) + '">Copy</button>' : '') + '</div>' +
+          '<div class="detail-script-body">' + (c.whatsapp_message ? escapeHtml(c.whatsapp_message) : '<span class="no-phone">Not generated yet</span>') + '</div>' +
+        '</div>' +
+        (c.wa_link ? '<a class="btn-whatsapp detail-wa-btn" href="' + escapeAttr(c.wa_link) + '" target="_blank" rel="noopener">Open WhatsApp chat</a>' : '');
+
+      const copyBtn = detail.querySelector('.copy-btn');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+          navigator.clipboard.writeText(copyBtn.dataset.copy || '').then(function () {
+            copyBtn.textContent = 'Copied!';
+            setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1200);
+          });
+        });
+      }
+    }
+
+    document.querySelectorAll('.call-card').forEach(function (card) {
+      card.addEventListener('click', function (e) {
+        if (e.target.closest('a, button')) return;
+        document.querySelectorAll('.call-card').forEach(function (c) { c.classList.remove('active'); });
+        card.classList.add('active');
+        showCallDetail(JSON.parse(card.dataset.contact));
+      });
+    });
+  </script>
+</body>
+</html>

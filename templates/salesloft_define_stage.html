@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Salesloft — define stage — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .stage-controls { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; margin: 16px 24px; padding: 16px; background: #fafcff; border: 1px solid #eee; border-radius: 8px; }
+    .stage-controls label { display: flex; flex-direction: column; font-size: 12px; text-transform: uppercase; color: #888; gap: 4px; }
+    .stage-controls select, .stage-controls input[type="datetime-local"] { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 220px; }
+    .mode-toggle { display: flex; gap: 8px; }
+    .mode-toggle button { padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 14px; }
+    .mode-toggle button.active { background: var(--sl-green, #00684A); color: #fff; border-color: transparent; }
+    .schedule-field { display: none; }
+    .schedule-field.visible { display: flex; }
+    .existing-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+    .sched-card { background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; margin-bottom:20px; }
+    .sched-meta h2 { font-size:16px; margin:0 0 4px 0; }
+    .sched-meta .email { color:#666; font-weight:normal; font-size:13px; }
+    .sched-subject-row { margin: 4px 0 12px 0; }
+    .sched-subject-row label { font-size:12px; text-transform:uppercase; color:#888; display:block; margin-bottom:4px; }
+    .sched-subject-row input { width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:14px; box-sizing:border-box; }
+    .sched-col-full { width:100%; }
+    .sched-col-full h3 { font-size:12px; text-transform:uppercase; color:#888; margin:0 0 6px 0; }
+    .editor-toolbar { display:flex; gap:4px; padding:6px; background:#fafcff; border:1px solid #eee; border-bottom:none; border-radius:4px 4px 0 0; }
+    .editor-btn { min-width:32px; height:30px; padding:0 8px; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:13px; line-height:1; color:#333; }
+    .editor-btn:hover { background:#f0f4ff; border-color:var(--sl-green, #00684A); }
+    .editor-btn:active, .editor-btn.active { background:var(--sl-green, #00684A); color:#fff; border-color:transparent; }
+    .rich-editor { background:#fff; border:1px solid #eee; border-radius:0 0 4px 4px; padding:10px 12px; font-size:14px; line-height:1.5; min-height:160px; }
+    .rich-editor:focus { outline:2px solid #cfe3ff; outline-offset:-1px; }
+    .rich-editor p { margin:0 0 10px 0; }
+    .rich-editor ul, .rich-editor ol { margin:0 0 10px 0; padding-left:22px; }
+    .rich-editor a { color:#1a5fb4; }
+    .editor-hint { font-size:12px; color:#999; margin-top:4px; }
+    .save-indicator { font-size:12px; color:#999; margin-left:8px; }
+    .save-indicator.saved { color:#2a7; }
+    .save-indicator.saving { color:#999; }
+    .save-indicator.error { color:#c33; }
+    .missing-warning { background:#fff4f4; border:1px solid #f0c; color:#a00; padding:12px 16px; border-radius:6px; margin:16px 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Salesloft — define stage</h1>
+        <p>{{ row_count }} contact{{ 's' if row_count != 1 else '' }} staged{% if pending_commit %} · not yet added to the master tracker{% endif %}</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  {% if missing_columns %}
+  <div class="missing-warning">
+    Missing column{{ 's' if missing_columns|length != 1 else '' }} in the staged CSV: {{ missing_columns|join(', ') }}.
+    Add {{ 'them' if missing_columns|length != 1 else 'it' }} via the cells below before running.
+  </div>
+  {% endif %}
+
+  {% if rows %}
+  <div class="stage-controls">
+    <label>Target cadence
+      <select id="cadence-select">
+        <option value="" disabled {{ 'selected' if not cadences }}>Choose a cadence…</option>
+        {% for c in cadences %}
+        <option value="{{ c.id }}">{{ c.label }} (id {{ c.id }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div>
+      <label style="margin-bottom:4px; display:block;">Send mode</label>
+      <div class="mode-toggle">
+        <button type="button" id="mode-now-btn" class="active" onclick="setMode('now')">Send now (review each)</button>
+        <button type="button" id="mode-schedule-btn" onclick="setMode('schedule')">Schedule for later</button>
+      </div>
+    </div>
+    <label class="schedule-field" id="schedule-field">
+      Send at (Singapore time) — batch default
+      <input type="datetime-local" id="send-at-input">
+    </label>
+    <div class="schedule-field" id="schedule-split-controls" style="flex-direction: column; gap: 4px;">
+      <label style="margin-bottom: 0;">Split batch (optional)</label>
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <button type="button" class="btn-toggle" onclick="applySendAt('selected')">Apply to selected rows</button>
+        <button type="button" class="btn-toggle" onclick="applySendAt('all')">Apply to all rows</button>
+        <button type="button" class="btn-toggle" onclick="clearSendAt('selected')">Clear selected rows</button>
+        <button type="button" class="btn-toggle" onclick="clearSendAt('all')">Clear all rows</button>
+        <span id="split-apply-feedback" style="font-size: 12px; color: #2a7;"></span>
+      </div>
+    </div>
+    <label class="existing-toggle" style="flex-direction: row;">
+      <input type="checkbox" id="exclude-existing-checkbox">
+      Skip contacts that already exist in Salesloft
+    </label>
+    <a class="btn-toggle" href="{{ url_for('cadence_settings') }}" style="text-decoration:none;">+ Manage cadences</a>
+  </div>
+
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="salesloft-table">
+      <thead>
+        <tr>
+          <th class="actions-col" style="min-width: 60px; white-space: nowrap;"><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)" title="Select all" style="cursor: pointer;"></th>
+          {% for h in headers %}
+          <th style="width: 160px; max-width: 160px;">{{ h }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}">
+          <td class="actions-col" style="white-space: nowrap;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" class="row-select-checkbox" data-row="{{ row_idx }}" style="cursor: pointer; width: 16px; height: 16px; flex-shrink: 0;">
+              <form method="post" action="{{ url_for('salesloft_preview_delete_row') }}" onsubmit="return confirm('Remove this contact from the batch?');" style="display: contents;">
+                <input type="hidden" name="row" value="{{ row_idx }}">
+                <button type="submit" class="btn-delete" title="Remove from batch">🗑</button>
+              </form>
+            </div>
+          </td>
+          {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          <td>
+            <div class="cell-content" contenteditable="true" data-col="{{ h }}" style="width: 100%; max-width: 160px;">{{ val }}</div>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 style="margin: 24px 24px 8px 24px; font-size: 16px;">Subject + Messaging — review before sending</h2>
+  <div style="margin: 0 24px;">
+    {% for row in rows %}
+    {% set row_idx = loop.index0 %}
+    <section class="sched-card" data-row="{{ row_idx }}">
+      <div class="sched-meta">
+        <h2>{{ row.get(col_name, '') or row.get(col_email, '') }} <span class="email">&lt;{{ row.get(col_email, '') }}&gt;</span></h2>
+      </div>
+      <div class="sched-subject-row">
+        <label>Subject</label>
+        <input type="text" class="sched-subject-input" data-col="{{ col_subject }}" value="{{ row.get(col_subject, '') }}">
+        <span class="save-indicator" data-role="subject-indicator"></span>
+      </div>
+      <div class="sched-col-full">
+        <h3>Messaging (body only — signature/footer added automatically) <span class="save-indicator" data-role="body-indicator"></span></h3>
+        <div class="editor-toolbar" role="toolbar" aria-label="Formatting">
+          <button type="button" class="editor-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+          <button type="button" class="editor-btn" data-cmd="insertUnorderedList" title="Bullet list">&bull;&equiv;</button>
+          <button type="button" class="editor-btn" data-cmd="insertOrderedList" title="Numbered list">1.&equiv;</button>
+          <button type="button" class="editor-btn" data-cmd="link" title="Add link">&#128279;</button>
+        </div>
+        <div class="rich-editor" contenteditable="true" data-role="rich-editor"></div>
+        <!-- Holds the sanitized HTML that actually gets saved/sent; kept
+             off-screen rather than removed so nothing else on the page
+             (autosave, row deletion) needs to change. -->
+        <textarea class="sched-raw" data-col="{{ col_body }}" style="display:none;">{{ row.get(col_body, '') }}</textarea>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+
+  <div style="margin: 16px 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <button type="button" class="btn-export" style="border:none;" onclick="runPipeline(false)">
+      {% if pending_commit %}Confirm: add to tracker &amp; run all{% else %}Confirm &amp; run all{% endif %}
+    </button>
+    <button type="button" class="btn-toggle" onclick="runPipeline(true)">
+      Confirm &amp; run selected only
+    </button>
+    <span style="font-size: 12px; color: #888;">
+      "Selected only" runs just the checked rows through this cadence — everything else stays staged, untouched, for a later run (e.g. a different cadence).
+    </span>
+  </div>
+  {% else %}
+  <p class="empty">Nothing staged for Salesloft yet — select rows in the tracker and click "Send selected to Salesloft," or import a CSV.</p>
+  {% endif %}
+
+  <div id="pipeline-log-panel" class="script-log-panel" style="display:none; margin: 0 24px 24px 24px;">
+    <div class="script-log-header">
+      <span>Salesloft pipeline</span>
+      <span id="pipeline-status" class="script-status-badge">idle</span>
+    </div>
+    <pre id="pipeline-log-output" class="script-log-output"></pre>
+    <div class="scraper-actions">
+      <button type="button" class="btn-toggle" onclick="sendPipelineSignal('')">Logged in / Sent — Continue</button>
+      <button type="button" id="skip-contact-btn" class="btn-delete-bulk" onclick="sendPipelineSignal('skip')" style="display:none;">Skip this contact</button>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'now';
+    let pipelineJobId = null;
+    let pipelinePollTimer = null;
+    const SEND_AT_COL = 'Send At';
+    const COL_NAME = {{ col_name | tojson }};
+    const COL_EMAIL = {{ col_email | tojson }};
+
+    function toggleSelectAll(checkbox) {
+      document.querySelectorAll('.row-select-checkbox').forEach(function (cb) {
+        cb.checked = checkbox.checked;
+      });
+    }
+
+    function getSelectedRowIndices() {
+      return Array.from(document.querySelectorAll('.row-select-checkbox:checked')).map(function (cb) {
+        return cb.dataset.row;
+      });
+    }
+
+    function resolveScopeIndices(scope) {
+      if (scope === 'all') {
+        return Array.from(document.querySelectorAll('#salesloft-table tbody tr')).map(function (tr) { return tr.dataset.row; });
+      }
+      const indices = getSelectedRowIndices();
+      if (!indices.length) { alert('Select at least one row first (checkbox on the left of the table).'); }
+      return indices;
+    }
+
+    function showSplitFeedback(text) {
+      const feedback = document.getElementById('split-apply-feedback');
+      if (!feedback) return;
+      feedback.textContent = text;
+      setTimeout(function () { feedback.textContent = ''; }, 3000);
+    }
+
+    function applySendAt(scope) {
+      const raw = document.getElementById('send-at-input').value; // "YYYY-MM-DDTHH:MM"
+      if (!raw) { alert('Pick a date/time first, then apply it.'); return; }
+      const sendAt = raw.replace('T', ' ');
+
+      const indices = resolveScopeIndices(scope);
+      if (!indices.length) return;
+
+      indices.forEach(function (rowIndex) {
+        const cell = document.querySelector('#salesloft-table tr[data-row="' + rowIndex + '"] .cell-content[data-col="' + SEND_AT_COL + '"]');
+        if (!cell) return;
+        cell.textContent = sendAt;
+        saveCell(rowIndex, SEND_AT_COL, sendAt, null);
+        cell.classList.add('saved-flash');
+        setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+      });
+
+      showSplitFeedback(`✓ Applied ${sendAt} to ${indices.length} row(s)`);
+    }
+
+    function clearSendAt(scope) {
+      const indices = resolveScopeIndices(scope);
+      if (!indices.length) return;
+
+      let cleared = 0;
+      indices.forEach(function (rowIndex) {
+        const cell = document.querySelector('#salesloft-table tr[data-row="' + rowIndex + '"] .cell-content[data-col="' + SEND_AT_COL + '"]');
+        if (!cell) return;
+        if (!cell.textContent.trim()) return; // already empty -- nothing to clear or save
+        cell.textContent = '';
+        saveCell(rowIndex, SEND_AT_COL, '', null);
+        cell.classList.add('saved-flash');
+        setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+        cleared++;
+      });
+
+      showSplitFeedback(cleared ? `✓ Cleared Send At on ${cleared} row(s)` : 'Nothing to clear on those rows');
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('mode-now-btn').classList.toggle('active', mode === 'now');
+      document.getElementById('mode-schedule-btn').classList.toggle('active', mode === 'schedule');
+      document.getElementById('schedule-field').classList.toggle('visible', mode === 'schedule');
+      document.getElementById('schedule-split-controls').classList.toggle('visible', mode === 'schedule');
+      document.getElementById('skip-contact-btn').style.display = mode === 'now' ? 'inline-block' : 'none';
+    }
+
+    // ── Body sanitizer -- mirrors sanitize_body_html() in
+    // salesloft_pipeline.py. This is a display/UX-time cleanup so the
+    // editor never holds junk markup; the Python side is the
+    // authoritative gate before anything is injected into Salesloft.
+    const RICH_TAG_MAP = { P: 'p', DIV: 'p', BR: 'br', B: 'b', STRONG: 'b', UL: 'ul', OL: 'ol', LI: 'li', A: 'a' };
+    const TAG_SNIFF_RE = /<\/?(p|br|b|strong|ul|ol|li|a|div)\b/i;
+
+    const DROP_CONTENT_TAGS = { SCRIPT: true, STYLE: true };
+
+    function sanitizeNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) return [document.createTextNode(node.textContent)];
+      if (node.nodeType !== Node.ELEMENT_NODE) return [];
+      if (DROP_CONTENT_TAGS[node.tagName]) return []; // drop tag AND its text content
+
+      const mapped = RICH_TAG_MAP[node.tagName];
+      const children = [];
+      Array.from(node.childNodes).forEach(function (child) {
+        children.push.apply(children, sanitizeNode(child));
+      });
+
+      if (!mapped) return children; // unwrap: drop the tag, keep sanitized children
+
+      if (mapped === 'br') return [document.createElement('br')];
+
+      if (mapped === 'a') {
+        const href = (node.getAttribute('href') || '').trim();
+        if (!/^https?:\/\//i.test(href)) return children; // bad/missing href -- unwrap
+        const a = document.createElement('a');
+        a.setAttribute('href', href);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener');
+        children.forEach(function (c) { a.appendChild(c); });
+        return [a];
+      }
+
+      const el = document.createElement(mapped);
+      children.forEach(function (c) { el.appendChild(c); });
+      return [el];
+    }
+
+    function sanitizeHtml(dirtyHtml) {
+      const container = document.createElement('div');
+      container.innerHTML = dirtyHtml;
+      const clean = document.createElement('div');
+      Array.from(container.childNodes).forEach(function (node) {
+        sanitizeNode(node).forEach(function (n) { clean.appendChild(n); });
+      });
+      return clean.innerHTML;
+    }
+
+    function escapeForPlainText(text) {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Legacy staged rows may be plain text (pre-rich-editor). Detect
+    // and convert using the old newline convention; otherwise treat as
+    // already-HTML and sanitize it as-is.
+    function toEditableHtml(raw) {
+      if (TAG_SNIFF_RE.test(raw)) return sanitizeHtml(raw);
+      const escaped = escapeForPlainText(raw).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+      return sanitizeHtml('<p>' + escaped + '</p>');
+    }
+
+    function setIndicator(el, state, label) {
+      el.className = 'save-indicator ' + state;
+      el.textContent = label;
+    }
+
+    function saveCell(rowIndex, column, value, indicatorEl) {
+      if (indicatorEl) setIndicator(indicatorEl, 'saving', 'saving…');
+      fetch('{{ url_for("salesloft_preview_update_cell") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ row: rowIndex, column: column, value: value }),
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('save failed');
+          if (indicatorEl) { setIndicator(indicatorEl, 'saved', 'saved'); setTimeout(function () { indicatorEl.textContent = ''; }, 1500); }
+        })
+        .catch(function () {
+          if (indicatorEl) setIndicator(indicatorEl, 'error', 'could not save');
+        });
+    }
+
+    document.execCommand('defaultParagraphSeparator', false, 'p');
+
+    document.querySelectorAll('.sched-card').forEach(function (card) {
+      const rowIndex = card.dataset.row;
+      const textarea = card.querySelector('.sched-raw'); // holds the saved/sanitized value, hidden
+      const editor = card.querySelector('[data-role="rich-editor"]');
+      const subjectInput = card.querySelector('.sched-subject-input');
+      const bodyIndicator = card.querySelector('[data-role="body-indicator"]');
+      const subjectIndicator = card.querySelector('[data-role="subject-indicator"]');
+
+      editor.innerHTML = toEditableHtml(textarea.value);
+
+      function commitBody() {
+        const clean = sanitizeHtml(editor.innerHTML);
+        if (editor.innerHTML !== clean) editor.innerHTML = clean; // reflect canonical form
+        if (textarea.value === clean) return;
+        textarea.value = clean;
+        saveCell(rowIndex, textarea.dataset.col, clean, bodyIndicator);
+      }
+
+      let bodySaveTimer = null;
+      editor.addEventListener('input', function () {
+        clearTimeout(bodySaveTimer);
+        bodySaveTimer = setTimeout(commitBody, 800);
+      });
+      editor.addEventListener('blur', function () {
+        clearTimeout(bodySaveTimer);
+        commitBody();
+      });
+      // Plain-text paste only -- keeps pasted content (e.g. from an
+      // email or doc) from bringing in styles/tags outside the
+      // allowlist; use the toolbar to (re-)add bold/lists/links after.
+      editor.addEventListener('paste', function (e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertText', false, text);
+      });
+
+      card.querySelectorAll('.editor-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          editor.focus();
+          const cmd = btn.dataset.cmd;
+          if (cmd === 'link') {
+            const url = window.prompt('Link URL (must start with http:// or https://):', 'https://');
+            if (!url) return;
+            if (!/^https?:\/\//i.test(url.trim())) { alert('Link must start with http:// or https://'); return; }
+            document.execCommand('createLink', false, url.trim());
+          } else {
+            document.execCommand(cmd, false, null);
+          }
+          clearTimeout(bodySaveTimer);
+          bodySaveTimer = setTimeout(commitBody, 300);
+        });
+      });
+
+      subjectInput.addEventListener('blur', function () {
+        saveCell(rowIndex, subjectInput.dataset.col, subjectInput.value, subjectIndicator);
+      });
+      subjectInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); subjectInput.blur(); }
+      });
+    });
+
+    document.querySelectorAll('#salesloft-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        const newValue = cell.textContent;
+        if (newValue === originalValue) return;
+        const tr = cell.closest('tr');
+        saveCell(tr.dataset.row, cell.dataset.col, newValue, null);
+        cell.classList.add('saved-flash');
+        setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+      });
+    });
+
+    function runPipeline(selectedOnly) {
+      const cadenceSelect = document.getElementById('cadence-select');
+      const cadenceId = cadenceSelect.value;
+      if (!cadenceId) { alert('Pick a target cadence first.'); return; }
+
+      const allRows = Array.from(document.querySelectorAll('#salesloft-table tbody tr'));
+      let targetRows = allRows;
+      let rowIndices = null;
+
+      if (selectedOnly) {
+        targetRows = allRows.filter(function (tr) {
+          const cb = tr.querySelector('.row-select-checkbox');
+          return cb && cb.checked;
+        });
+        if (!targetRows.length) { alert('Check the rows you want to run first (checkbox on the left of the table).'); return; }
+        rowIndices = targetRows.map(function (tr) { return parseInt(tr.dataset.row, 10); });
+      }
+
+      let sendAt = null;
+      let perRowCount = 0;
+      if (currentMode === 'schedule') {
+        const raw = document.getElementById('send-at-input').value; // "YYYY-MM-DDTHH:MM"
+        sendAt = raw ? raw.replace('T', ' ') : null;
+
+        // Every row being run needs a send time: either its own Send At
+        // cell (split-batch override) or the batch default above.
+        const missing = [];
+        targetRows.forEach(function (tr) {
+          const cell = tr.querySelector('.cell-content[data-col="' + SEND_AT_COL + '"]');
+          const ownValue = cell ? cell.textContent.trim() : '';
+          if (ownValue) { perRowCount++; return; }
+          if (!sendAt) {
+            const nameCell = tr.querySelector('.cell-content[data-col="' + COL_NAME + '"]') || tr.querySelector('.cell-content[data-col="' + COL_EMAIL + '"]');
+            missing.push(nameCell ? nameCell.textContent.trim() : ('row ' + tr.dataset.row));
+          }
+        });
+        if (missing.length) {
+          alert('No send time for: ' + missing.slice(0, 8).join(', ') + (missing.length > 8 ? '…' : '')
+            + '\n\nEither set the batch default above, or fill each row\'s own Send At cell (or use "Apply to selected/all").');
+          return;
+        }
+      }
+
+      const excludeExisting = document.getElementById('exclude-existing-checkbox').checked;
+
+      const scopeLabel = selectedOnly
+        ? `the ${targetRows.length} selected contact(s) (out of ${allRows.length} staged — the rest stay staged, untouched)`
+        : `all ${allRows.length} staged contact(s)`;
+
+      let confirmMsg;
+      if (currentMode === 'now') {
+        confirmMsg = `Run the import + cadence enrollment for ${scopeLabel}, then step through each for review/send?`;
+      } else if (perRowCount > 0 && sendAt) {
+        confirmMsg = `Run the import + cadence enrollment for ${scopeLabel} — ${perRowCount} at their own Send At time, the rest at the batch default (${sendAt}, Singapore time)?`;
+      } else if (perRowCount > 0) {
+        confirmMsg = `Run the import + cadence enrollment for ${scopeLabel}, each at their own Send At time (split batch)?`;
+      } else {
+        confirmMsg = `Run the import + cadence enrollment for ${scopeLabel}, scheduled for ${sendAt} (Singapore time)?`;
+      }
+      if (!confirm(confirmMsg)) return;
+
+      const payload = {
+        cadence_id: cadenceId,
+        mode: currentMode,
+        send_at: sendAt,
+        exclude_existing: excludeExisting,
+      };
+      if (rowIndices) payload.row_indices = rowIndices;
+
+      fetch('{{ url_for("salesloft_pipeline_run") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) { alert(result.data.error || 'Could not start the pipeline.'); return; }
+          pipelineJobId = result.data.job_id;
+          document.getElementById('pipeline-log-panel').style.display = 'block';
+          document.getElementById('pipeline-log-output').textContent = '';
+          setPipelineStatus('running');
+          pollPipeline();
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+
+    function setPipelineStatus(status) {
+      const badge = document.getElementById('pipeline-status');
+      badge.textContent = status;
+      badge.className = 'script-status-badge status-' + status;
+    }
+
+    function sendPipelineSignal(text) {
+      if (!pipelineJobId) return;
+      fetch('/salesloft/pipeline/continue/' + pipelineJobId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text }),
+      }).catch(function () { alert('Could not send the signal.'); });
+    }
+
+    function pollPipeline() {
+      if (pipelinePollTimer) clearInterval(pipelinePollTimer);
+      pipelinePollTimer = setInterval(function () {
+        fetch('/salesloft/pipeline/status/' + pipelineJobId)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.error) { clearInterval(pipelinePollTimer); return; }
+            const out = document.getElementById('pipeline-log-output');
+            const wasAtBottom = (out.scrollHeight - out.scrollTop - out.clientHeight) < 30;
+            out.textContent = data.log.join('\n');
+            if (wasAtBottom) out.scrollTop = out.scrollHeight;
+            setPipelineStatus(data.status);
+            if (data.status === 'done' || data.status === 'error') {
+              clearInterval(pipelinePollTimer);
+            }
+          })
+          .catch(function () { clearInterval(pipelinePollTimer); });
+      }, 1500);
+    }
+  </script>
+</body>
+</html>

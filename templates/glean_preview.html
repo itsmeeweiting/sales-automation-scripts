@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glean {{ 'input' if stage == 'input' else 'output' }} review — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    #glean-staging-table{border-collapse:collapse;table-layout:fixed;}
+    #glean-staging-table thead th{position:sticky;top:0;z-index:2;background:var(--surface,#fff);box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;}
+    .cell-content{max-height:22px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:max-height .1s ease;}
+    .cell-content:focus{max-height:220px;overflow:auto;white-space:pre-wrap;line-height:1.4;outline:2px solid rgba(16,185,129,.5);outline-offset:-1px;}
+    .cell-readonly-preview{cursor:default;color:#444;background:#fafafa;border-radius:3px;padding:0 2px;}
+    .col-resize-handle{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;user-select:none;touch-action:none;}
+    .col-resize-handle::after{content:'';position:absolute;top:0;right:3px;width:2px;height:100%;background:currentColor;opacity:.25;}
+    .col-resize-handle:hover::after,.col-resize-handle.resizing::after{opacity:.7;}
+
+    .search-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 24px 0;flex-wrap:wrap;}
+    .search-row input[type=search]{font-family:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;opacity:.9;width:240px;}
+    .mass-update-bar{display:flex;align-items:center;gap:10px;margin:10px 24px 0;padding:9px 14px;border-radius:8px;border:1px dashed currentColor;font-size:13px;flex-wrap:wrap;}
+    .mass-update-bar select,.mass-update-bar input[type=text]{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:6px;border:1px solid currentColor;background:transparent;}
+    .mass-update-bar select{max-width:220px;}
+    .mass-update-bar input[type=text]{flex:1;min-width:160px;}
+    .mass-update-bar button{font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid currentColor;background:transparent;cursor:pointer;font-weight:600;white-space:nowrap;}
+    .mass-update-bar button:hover{opacity:.8;}
+    .mass-update-bar button:disabled{opacity:.5;cursor:default;}
+    .mass-update-bar button.danger{color:#dc2626;border-color:#dc2626;}
+    .mass-update-bar button.danger:hover{background:rgba(220,38,38,.1);}
+    .mass-update-bar .scope-hint{opacity:.65;font-size:12px;white-space:nowrap;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>{{ 'Glean Message Enhance — review before running' if stage == 'input' else 'Glean Message Enhance — review results' }}</h1>
+        <p>{{ row_count }} row{{ 's' if row_count != 1 else '' }} staged
+          {% if stage == 'input' %} · this is what gets sent to Glean{% else %} · not yet saved to the master tracker{% endif %}
+          · click any cell to edit</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('glean_page') }}">← Back</a>
+      </div>
+    </div>
+  </header>
+
+  {% if stage == 'output' %}
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    Rows that came from the tracker will <strong>update</strong> their original row on confirm. Rows added manually here, or from a CSV upload, will be <strong>created</strong> as new rows instead.
+  </div>
+  {% endif %}
+
+  <details class="add-contact" style="margin: 14px 24px 0;">
+    <summary>+ Add row manually</summary>
+    <form method="post" action="{{ url_for('glean_add_row', stage=stage) }}">
+      <div class="add-grid">
+        {% for h in (headers if headers else tracker_headers) %}
+        <label>
+          {{ h }}
+          <input type="text" name="{{ h }}">
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit">Add row</button>
+    </form>
+  </details>
+
+  <div class="search-row">
+    <input type="search" id="searchBox" placeholder="Search any column…">
+    <span id="rowCountLabel"></span>
+    {% if headers %}
+    <a class="btn-export" style="border:none;" href="{{ url_for('tools_preview_export', source=('glean_input' if stage == 'input' else 'glean_output')) }}">Export CSV</a>
+    {% endif %}
+  </div>
+
+  {% if headers %}
+  <div class="mass-update-bar">
+    <label>Column:
+      <select id="massColumn">
+        {% for h in headers %}
+        <option value="{{ h }}">{{ h }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="text" id="massValue" placeholder="Value to set, e.g. Indonesia">
+    <button type="button" id="massApplyBtn">Apply to all rows</button>
+    <span class="scope-hint" id="massScopeHint"></span>
+    <button type="button" id="massDeleteBtn" class="danger" style="margin-left:auto;">Delete these rows</button>
+  </div>
+  {% endif %}
+
+  {% if headers %}
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="glean-staging-table">
+      <thead>
+        <tr>
+          <th class="actions-col"></th>
+          {% for h in headers %}
+          <th data-col="{{ h }}" style="width: 160px; max-width: 160px;">{{ h }}<span class="col-resize-handle" title="Drag to resize"></span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}" data-search="{{ (row.values() | map('default', '', true) | join(' '))|lower }}">
+          <td class="actions-col">
+            <form method="post" action="{{ url_for('glean_delete_row', stage=stage) }}" onsubmit="return confirm('Remove this row?');">
+              <input type="hidden" name="row" value="{{ row_idx }}">
+              <button type="submit" class="btn-delete" title="Remove this row">🗑</button>
+            </form>
+          </td>
+          {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          <td>
+            {% if h == col_body %}
+            <div class="cell-content cell-readonly-preview" data-col="{{ h }}" title="{{ val | html_preview_text }}&#10;&#10;(Formatted -- edit at the Salesloft staging step, not here.)" style="width: 100%; max-width: 160px;">{{ val | html_preview_text }}</div>
+            {% else %}
+            <div class="cell-content" contenteditable="true" data-col="{{ h }}" style="width: 100%; max-width: 160px;">{{ val }}</div>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="{{ headers|length + 1 }}" class="empty-row">No rows.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if stage == 'input' %}
+  <div style="margin: 16px 24px;">
+    <button type="button" class="btn-export" style="border:none;" onclick="runGlean()">Run Glean Enhance ({{ row_count }} row{{ 's' if row_count != 1 else '' }})</button>
+  </div>
+
+  <div id="glean-log-panel" class="script-log-panel" style="display:none;">
+    <div class="script-log-header">
+      <span>Glean Message Enhance</span>
+      <span id="glean-status" class="script-status-badge">idle</span>
+    </div>
+    <pre id="glean-log-output" class="script-log-output"></pre>
+    <div class="scraper-actions">
+      <button type="button" class="btn-delete-bulk" onclick="stopGlean()">Stop now (keep progress so far)</button>
+      <a id="glean-view-output" class="btn-export" style="border:none; display:none;" href="{{ url_for('glean_preview', stage='output') }}">View output</a>
+    </div>
+  </div>
+  {% else %}
+  <div style="margin: 16px 24px; display:flex; gap:12px; flex-wrap:wrap;">
+    <button type="button" class="btn-toggle" onclick="commitGleanOutput(false)">Save {{ row_count }} row(s) to tracker only</button>
+    <button type="button" class="btn-export" style="border:none;" onclick="commitGleanOutput(true)">Save &amp; proceed to Salesloft</button>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <p class="empty">Nothing staged yet.</p>
+  {% endif %}
+
+  <script>
+    // Which underlying staging file this page is backed by, for the
+    // generic mass-update/bulk-delete calls below (same files the
+    // per-cell update_cell / per-row delete forms already write to).
+    const GLEAN_SOURCE = {{ ('glean_input' if stage == 'input' else 'glean_output')|tojson }};
+
+    let gleanJobId = null;
+    let gleanPollTimer = null;
+
+    window.addEventListener('DOMContentLoaded', function () {
+      if (document.getElementById('glean-log-panel') === null) return;
+      fetch('/glean/latest')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data.job_id) return;
+          gleanJobId = data.job_id;
+          document.getElementById('glean-log-panel').style.display = 'block';
+          document.getElementById('glean-log-output').textContent = data.log.join('\n');
+          setGleanStatus(data.status);
+          if (data.status === 'running' || data.status === 'queued') {
+            pollGlean();
+          } else if (data.status === 'done' || data.status === 'stopped') {
+            document.getElementById('glean-view-output').style.display = 'inline-block';
+          }
+        })
+        .catch(function () {});
+    });
+
+    function runGlean() {
+      fetch('/glean/run', { method: 'POST' })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) { alert(result.data.error || 'Could not start the run.'); return; }
+          gleanJobId = result.data.job_id;
+          document.getElementById('glean-log-panel').style.display = 'block';
+          document.getElementById('glean-log-output').textContent = '';
+          document.getElementById('glean-view-output').style.display = 'none';
+          setGleanStatus('running');
+          pollGlean();
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+
+    function setGleanStatus(status) {
+      const badge = document.getElementById('glean-status');
+      badge.textContent = status;
+      badge.className = 'script-status-badge status-' + status;
+    }
+
+    // Was a plain <form action="glean_output_commit"> before -- now a
+    // fetch so that on success we can optionally follow up with the
+    // Salesloft handoff, using the real committed tracker row indices the
+    // server hands back, the same way uploadGleanCsv() above already
+    // follows a redirect via fetch instead of a page navigation.
+    //
+    // proceedToSalesloft is set by which of the two buttons was clicked --
+    // "Save to tracker only" (false) vs "Save & proceed to Salesloft" (true)
+    // -- so the intent is explicit up front instead of a second confirm().
+    function commitGleanOutput(proceedToSalesloft) {
+      const confirmMsg = 'Save these {{ row_count }} row(s) to the master tracker? '
+        + 'Rows from the tracker will update their original row; new/manual rows will be created. '
+        + 'This cannot be undone.';
+      if (!confirm(confirmMsg)) return;
+
+      fetch('{{ url_for("glean_output_commit") }}', { method: 'POST' })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) { alert(result.data.error || 'Could not save to the tracker.'); return; }
+
+          const indices = result.data.row_indices || [];
+
+          if (!proceedToSalesloft || !indices.length) {
+            window.location.href = '{{ url_for("dashboard_page") }}';
+            return;
+          }
+
+          const formData = new FormData();
+          indices.forEach(function (idx) { formData.append('rows', idx); });
+          fetch('{{ url_for("salesloft_stage_from_tracker") }}', { method: 'POST', body: formData })
+            .then(function (res2) { window.location.href = res2.url; })
+            .catch(function () {
+              alert('Saved to tracker, but could not stage for Salesloft -- select these contacts from the tracker manually.');
+              window.location.href = '{{ url_for("dashboard_page") }}';
+            });
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+
+    function stopGlean() {
+      if (!gleanJobId) return;
+      if (!confirm('Stop the run now? Progress made so far will be kept.')) return;
+      fetch('/glean/stop/' + gleanJobId, { method: 'POST' })
+        .then(function (res) { return res.json(); })
+        .then(function (data) { if (data.error) alert(data.error); })
+        .catch(function () { alert('Could not send the stop signal.'); });
+    }
+
+    function pollGlean() {
+      if (gleanPollTimer) clearInterval(gleanPollTimer);
+      gleanPollTimer = setInterval(function () {
+        fetch('/glean/status/' + gleanJobId)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.error) { clearInterval(gleanPollTimer); return; }
+            const out = document.getElementById('glean-log-output');
+            const wasAtBottom = (out.scrollHeight - out.scrollTop - out.clientHeight) < 30;
+            out.textContent = data.log.join('\n');
+            if (wasAtBottom) out.scrollTop = out.scrollHeight;
+            setGleanStatus(data.status);
+            if (data.status === 'done' || data.status === 'error' || data.status === 'stopped') {
+              clearInterval(gleanPollTimer);
+              if (data.status === 'done' || data.status === 'stopped') {
+                document.getElementById('glean-view-output').style.display = 'inline-block';
+              }
+            }
+          })
+          .catch(function () { clearInterval(gleanPollTimer); });
+      }, 1500);
+    }
+
+    document.querySelectorAll('#glean-staging-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        const newValue = cell.textContent;
+        if (newValue === originalValue) return;
+        const tr = cell.closest('tr');
+        const rowIndex = tr.dataset.row;
+        const column = cell.dataset.col;
+        fetch('/glean/{{ stage }}/update_cell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ row: rowIndex, column: column, value: newValue }),
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('save failed');
+            cell.classList.add('saved-flash');
+            setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+          })
+          .catch(function () {
+            cell.textContent = originalValue;
+            alert('Could not save that edit — reverted.');
+          });
+      });
+    });
+    // -- Resizable columns: drag the handle on a header cell's right edge.
+    //    Widths persist per column in localStorage so they stick across
+    //    reloads (table-layout:fixed means a th's own width drives the
+    //    whole column, no colgroup needed). --------------------------------
+
+    (function () {
+      const table = document.getElementById('glean-staging-table');
+      if (!table) return;
+
+      function storageKey(col) { return 'gleanStagingColWidth:' + col; }
+
+      table.querySelectorAll('th[data-col]').forEach(function (th) {
+        const saved = localStorage.getItem(storageKey(th.dataset.col));
+        if (saved) th.style.width = saved + 'px';
+      });
+
+      let active = null, startX = 0, startWidth = 0;
+
+      table.querySelectorAll('.col-resize-handle').forEach(function (handle) {
+        handle.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          active = handle.closest('th');
+          startX = e.clientX;
+          startWidth = active.offsetWidth;
+          handle.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+        });
+        handle.addEventListener('dblclick', function () {
+          const th = handle.closest('th');
+          th.style.width = '160px';
+          localStorage.removeItem(storageKey(th.dataset.col));
+        });
+      });
+
+      document.addEventListener('mousemove', function (e) {
+        if (!active) return;
+        active.style.width = Math.max(60, startWidth + (e.clientX - startX)) + 'px';
+      });
+
+      document.addEventListener('mouseup', function () {
+        if (!active) return;
+        localStorage.setItem(storageKey(active.dataset.col), parseInt(active.style.width, 10));
+        table.querySelectorAll('.col-resize-handle.resizing').forEach(function (h) { h.classList.remove('resizing'); });
+        document.body.style.cursor = '';
+        active = null;
+      });
+    })();
+
+    // -- Search filter, scoped to this table's rows -----------------------
+
+    function visibleGleanRows() {
+      return Array.from(document.querySelectorAll('#glean-staging-table tbody tr[data-row]'))
+        .filter(function (tr) { return tr.style.display !== 'none'; });
+    }
+
+    function updateMassScopeHint() {
+      const hint = document.getElementById('massScopeHint');
+      if (!hint) return;
+      const n = visibleGleanRows().length;
+      hint.textContent = 'will update ' + n + ' row' + (n === 1 ? '' : 's');
+    }
+
+    const searchBox = document.getElementById('searchBox');
+    if (searchBox) {
+      searchBox.addEventListener('input', function (e) {
+        const q = e.target.value.trim().toLowerCase();
+        let visible = 0;
+        document.querySelectorAll('#glean-staging-table tbody tr[data-row]').forEach(function (tr) {
+          const match = !q || (tr.dataset.search || '').includes(q);
+          tr.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        document.getElementById('rowCountLabel').textContent = q ? (visible + ' matching') : '';
+        updateMassScopeHint();
+      });
+    }
+
+    // -- Mass update: set one column to one value across every row that's
+    //    currently visible (search first to target a subset). -------------
+
+    const massApplyBtn = document.getElementById('massApplyBtn');
+    if (massApplyBtn) {
+      updateMassScopeHint();
+      massApplyBtn.addEventListener('click', function () {
+        const column = document.getElementById('massColumn').value;
+        const value = document.getElementById('massValue').value;
+        const rows = visibleGleanRows();
+        if (!rows.length) { alert('No rows to update.'); return; }
+        if (!confirm('Set "' + column + '" to "' + value + '" for ' + rows.length + ' row(s)? This overwrites whatever is there now and can\'t be undone.')) return;
+
+        const rowIndices = rows.map(function (tr) { return Number(tr.dataset.row); });
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Applying…';
+        fetch('/tools/preview/fill_column', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: GLEAN_SOURCE, column: column, value: value, rows: rowIndices }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'update failed'); });
+            return res.json();
+          })
+          .then(function () {
+            rows.forEach(function (tr) {
+              const cell = tr.querySelector('.cell-content[data-col="' + CSS.escape(column) + '"]');
+              if (cell) {
+                cell.textContent = value;
+                cell.classList.add('saved-flash');
+                setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+              }
+            });
+          })
+          .catch(function (err) {
+            alert('Mass update failed — nothing was changed. ' + (err.message || ''));
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Apply to all rows';
+          });
+      });
+    }
+
+    // -- Bulk delete: removes whatever's currently visible (search-scoped),
+    //    same underlying file the per-row 🗑 button writes to. -------------
+
+    const massDeleteBtn = document.getElementById('massDeleteBtn');
+    if (massDeleteBtn) {
+      massDeleteBtn.addEventListener('click', function () {
+        const rows = visibleGleanRows();
+        if (!rows.length) { alert('No rows to delete.'); return; }
+        if (!confirm('Delete ' + rows.length + ' row(s)? This cannot be undone.')) return;
+        const rowIndices = rows.map(function (tr) { return Number(tr.dataset.row); });
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+        fetch('/tools/preview/delete_rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: GLEAN_SOURCE, rows: rowIndices }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'delete failed'); });
+            return res.json();
+          })
+          .then(function () { location.reload(); })
+          .catch(function (err) {
+            alert('Delete failed — nothing was removed. ' + (err.message || ''));
+            btn.disabled = false;
+            btn.textContent = 'Delete these rows';
+          });
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Account Scrape — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>LinkedIn Account Scrape</h1>
+        <p>Scrapes every lead on a filtered Sales Navigator list for one account, enriching each via Cognism. No CSV upload here -- you'll type the account name and apply filters live in the browser window that opens.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  {% if has_staging %}
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    There's an unreviewed scrape sitting in staging from a previous run.
+    <a href="{{ url_for('account_scraper_preview') }}">Review it</a> before starting a new one — starting a new run will overwrite the staging copy.
+  </div>
+  {% endif %}
+
+  <div class="import-form">
+    <label class="block-label" style="display:flex; align-items:center; gap:8px; font-weight:400;">
+      <input type="checkbox" id="account-unlock-mobile">
+      Unlock LeadIQ mobile phone numbers (uses extra LeadIQ credits)
+    </label>
+    <button type="button" class="btn-export" style="border:none; align-self:flex-start;" onclick="runAccountScraper()">Run account scrape</button>
+  </div>
+
+  <div id="account-log-panel" class="script-log-panel" style="display:none;">
+    <div class="script-log-header">
+      <span>LinkedIn Account Scrape</span>
+      <span id="account-status" class="script-status-badge">idle</span>
+    </div>
+    <pre id="account-log-output" class="script-log-output"></pre>
+    <div class="scraper-actions" style="flex-wrap: wrap;">
+      <input type="text" id="account-name-input" placeholder="Account Name (when asked)" style="flex:1; min-width:200px; padding:6px 10px; border-radius:6px; border:1px solid #404040; background:#171717; color:#fff;">
+      <button type="button" class="btn-toggle" onclick="sendAccountText()">Send account name</button>
+      <button type="button" class="btn-toggle" onclick="sendAccountSignal('')">Continue (logged in / filters applied)</button>
+      <button type="button" class="btn-delete-bulk" onclick="stopAccountScraper()">Stop now (keep contacts scraped so far)</button>
+      <a id="account-view-results" class="btn-export" style="border:none; display:none;" href="{{ url_for('account_scraper_preview') }}">View results</a>
+    </div>
+  </div>
+
+  <script>
+    let accountJobId = null;
+    let accountPollTimer = null;
+
+    // On load, check whether a job from a previous visit to this page is
+    // still running (or just finished) and reconnect to it automatically,
+    // rather than always starting from a blank slate.
+    window.addEventListener('DOMContentLoaded', function () {
+      fetch('/account-scraper/latest')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data.job_id) return;
+          accountJobId = data.job_id;
+          document.getElementById('account-log-panel').style.display = 'block';
+          document.getElementById('account-log-output').textContent = data.log.join('\n');
+          document.getElementById('account-log-output').scrollTop = document.getElementById('account-log-output').scrollHeight;
+          setAccountStatus(data.status);
+          if (data.status === 'running' || data.status === 'queued') {
+            pollAccountScraper();
+          } else if (data.status === 'done' || data.status === 'stopped') {
+            document.getElementById('account-view-results').style.display = 'inline-block';
+          }
+        })
+        .catch(function () {});
+    });
+
+    function runAccountScraper() {
+      const unlockMobile = document.getElementById('account-unlock-mobile').checked;
+      fetch('/account-scraper/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unlock_mobile: unlockMobile }),
+      })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) { alert(result.data.error || 'Could not start the scrape.'); return; }
+          accountJobId = result.data.job_id;
+          document.getElementById('account-log-panel').style.display = 'block';
+          document.getElementById('account-log-output').textContent = '';
+          document.getElementById('account-view-results').style.display = 'none';
+          setAccountStatus('running');
+          pollAccountScraper();
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+
+    function setAccountStatus(status) {
+      const badge = document.getElementById('account-status');
+      badge.textContent = status;
+      badge.className = 'script-status-badge status-' + status;
+    }
+
+    function sendAccountSignal(text) {
+      if (!accountJobId) return;
+      fetch('/account-scraper/input/' + accountJobId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text }),
+      }).catch(function () { alert('Could not send the signal.'); });
+    }
+
+    function sendAccountText() {
+      const input = document.getElementById('account-name-input');
+      if (!input.value.trim()) { alert('Type the account name first.'); return; }
+      sendAccountSignal(input.value.trim());
+      input.value = '';
+    }
+
+    function stopAccountScraper() {
+      if (!accountJobId) return;
+      if (!confirm('Stop the scrape now? Whatever contacts have already been scraped will be kept.')) return;
+      fetch('/account-scraper/stop/' + accountJobId, { method: 'POST' })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data.error) alert(data.error);
+        })
+        .catch(function () { alert('Could not send the stop signal.'); });
+    }
+
+    function pollAccountScraper() {
+      if (accountPollTimer) clearInterval(accountPollTimer);
+      accountPollTimer = setInterval(function () {
+        fetch('/account-scraper/status/' + accountJobId)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.error) { clearInterval(accountPollTimer); return; }
+            const out = document.getElementById('account-log-output');
+            const wasAtBottom = (out.scrollHeight - out.scrollTop - out.clientHeight) < 30;
+            out.textContent = data.log.join('\n');
+            if (wasAtBottom) out.scrollTop = out.scrollHeight;
+            setAccountStatus(data.status);
+            if (data.status === 'done' || data.status === 'error' || data.status === 'stopped') {
+              clearInterval(accountPollTimer);
+              if (data.status === 'done' || data.status === 'stopped') {
+                document.getElementById('account-view-results').style.display = 'inline-block';
+              }
+            }
+          })
+          .catch(function () { clearInterval(accountPollTimer); });
+      }, 1500);
+    }
+  </script>
+</body>
+</html>

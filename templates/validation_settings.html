@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Validation — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Data Validation</h1>
+        <p>Define an allowed-values list per column. This is soft validation -- a value that doesn't match still saves, you just get a warning. The numbers below are computed against your real tracker.csv, so you can see the actual impact before relying on a rule.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  <div class="validation-list">
+    {% for col in columns_info %}
+    <details class="validation-col" {% if col.allowed %}open{% endif %}>
+      <summary>
+        <span class="validation-col-name">{{ col.name }}</span>
+        {% if col.allowed %}
+        <span class="validation-badge {% if col.mismatches %}validation-badge-warn{% endif %}">
+          {{ col.allowed|length }} allowed value{{ 's' if col.allowed|length != 1 else '' }}
+          {% if col.total_filled %} · {{ col.total_filled }} row{{ 's' if col.total_filled != 1 else '' }} filled in{% endif %}
+          {% if col.mismatches %} · {{ col.mismatches }} won't match{% endif %}
+        </span>
+        {% else %}
+        <span class="validation-badge validation-badge-off">no rule -- free text</span>
+        {% endif %}
+      </summary>
+      <form method="post">
+        <input type="hidden" name="column" value="{{ col.name }}">
+        <label class="block-label" style="max-width: 280px; margin-bottom: 10px;">
+          Rule type
+          <select name="rule_type" class="rule-type-select" data-target="rule-block-{{ loop.index0 }}">
+            <option value="fixed" {{ 'selected' if not col.is_lookup else '' }}>Fixed list</option>
+            <option value="lookup" {{ 'selected' if col.is_lookup else '' }}>Look up live from Accounts library</option>
+          </select>
+        </label>
+
+        <div class="rule-block" id="rule-block-{{ loop.index0 }}-fixed" style="display: {{ 'none' if col.is_lookup else 'block' }};">
+          <textarea name="values" rows="6" placeholder="One allowed value per line. Leave empty to remove any rule for this column.">{{ col.allowed_text }}</textarea>
+        </div>
+
+        <div class="rule-block" id="rule-block-{{ loop.index0 }}-lookup" style="display: {{ 'block' if col.is_lookup else 'none' }};">
+          <label class="block-label" style="max-width: 280px;">
+            Accounts column to pull values from
+            <select name="lookup_column">
+              {% for ah in accounts_headers %}
+              <option value="{{ ah }}" {{ 'selected' if ah == col.lookup_column else '' }}>{{ ah }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <p style="font-size:12px; color:#737373; margin: 8px 0 0;">Options come live from <code>accounts.csv</code> -- whatever you add there shows up here automatically, no need to retype anything.</p>
+        </div>
+
+        <div class="validation-stats">
+          {{ col.total_filled }} existing row{{ 's' if col.total_filled != 1 else '' }} currently have a value here{% if col.allowed and col.mismatches %}, and {{ col.mismatches }} of them don't match this list{% elif col.allowed %} -- all of them match this list{% endif %}.
+        </div>
+        <button type="submit" class="btn-export" style="border:none;">Save rule</button>
+      </form>
+    </details>
+    {% endfor %}
+  </div>
+
+  <script>
+    document.querySelectorAll('.rule-type-select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        const target = sel.dataset.target;
+        document.getElementById(target + '-fixed').style.display = sel.value === 'fixed' ? 'block' : 'none';
+        document.getElementById(target + '-lookup').style.display = sel.value === 'lookup' ? 'block' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

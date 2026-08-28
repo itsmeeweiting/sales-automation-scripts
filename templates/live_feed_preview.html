@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Feed Preview — {{ filename }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Page-specific layout only -- components/colors all come from style.css */
+    .event-badge {
+      display: inline-flex;
+      align-items: center;
+      font-family: var(--font-ui);
+      font-size: 0.66rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      padding: 3px 9px;
+      border-radius: var(--radius-full);
+      white-space: nowrap;
+    }
+    .event-badge-open   { color: var(--success); background: var(--success-soft); }
+    .event-badge-click  { color: var(--info);    background: var(--info-soft); }
+    .event-badge-hotlead{ color: var(--danger);  background: var(--danger-soft); }
+    .event-badge-other  { color: var(--text-muted); background: var(--bg-elevated-2); }
+    td.subject-cell { max-width: 280px; white-space: normal; }
+    a.out-link { font-family: var(--font-mono); font-size: 0.74rem; }
+
+    /* Column resize */
+    .table-wrap table { table-layout: fixed; }
+    .table-wrap th { position: relative; }
+    .col-resize-handle {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      user-select: none;
+      touch-action: none;
+    }
+    .col-resize-handle:hover,
+    .col-resize-handle.active {
+      background: var(--accent-soft-strong);
+    }
+    body.col-resizing { cursor: col-resize; user-select: none; }
+
+    /* Event type filter chips */
+    .filter-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 18px 28px 0;
+    }
+    .filter-chip {
+      font-family: var(--font-ui);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 5px 13px;
+      border-radius: var(--radius-full);
+      background: var(--bg-elevated-2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .filter-chip:hover { border-color: var(--border-strong); color: var(--text); }
+    .filter-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+    .filter-count { font-size: 0.78rem; color: var(--text-faint); margin-left: auto; }
+
+    /* Contact card trigger */
+    .contact-cell { text-align: left; }
+    .contact-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-ui);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated-2);
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .contact-btn:hover { border-color: var(--border-strong); color: var(--text); }
+    .contact-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .contact-dot-tracked { background: var(--success); }
+    /* No dedicated "warning" token in style.css yet -- amber here is a
+       page-local accent just for this not-tracked signal. */
+    .contact-dot-untracked { background: #d97706; }
+    .contact-btn-untracked { border-color: #f2c584; background: #fdf3e3; color: #92600c; }
+    .contact-btn-untracked:hover { border-color: #d97706; }
+
+    /* Contact card modal */
+    .contact-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 15, 15, 0.35);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .contact-modal-overlay.active { display: flex; }
+    .contact-modal {
+      position: relative;
+      width: 380px;
+      max-width: calc(100vw - 40px);
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: 24px;
+    }
+    .contact-modal-close {
+      position: absolute;
+      top: 14px; right: 14px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      border: none;
+      background: var(--bg-elevated-2);
+      color: var(--text-muted);
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .contact-modal-close:hover { color: var(--text); }
+    .contact-card-title { margin: 0 24px 2px 0; font-size: 1.02rem; font-weight: 600; color: var(--text); }
+    .contact-card-subtitle { margin: 0 0 14px; font-size: 0.82rem; color: var(--text-muted); }
+    .contact-card-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 14px; }
+    .contact-card-badge {
+      font-family: var(--font-ui); font-size: 0.68rem; font-weight: 600;
+      padding: 3px 9px; border-radius: var(--radius-full);
+      background: var(--info-soft); color: var(--info);
+    }
+    .contact-card-detail { font-size: 0.76rem; color: var(--text-faint); }
+    .contact-card-section { font-size: 0.8rem; color: var(--text); line-height: 1.55; margin: 0 0 14px; }
+    .contact-card-section strong {
+      display: block; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.03em;
+      text-transform: uppercase; color: var(--text-faint); margin-bottom: 3px;
+    }
+    .contact-card-links { display: flex; gap: 8px; margin-top: 6px; }
+    .contact-card-link {
+      font-family: var(--font-ui); font-size: 0.76rem; font-weight: 500;
+      padding: 6px 12px; border-radius: var(--radius-full);
+      border: 1px solid var(--border); color: var(--text); text-decoration: none;
+    }
+    .contact-card-link:hover { border-color: var(--border-strong); background: var(--bg-elevated-2); }
+    .contact-card-flag {
+      display: inline-block; font-family: var(--font-ui); font-size: 0.7rem; font-weight: 600;
+      padding: 4px 10px; border-radius: var(--radius-full);
+      background: #fdf3e3; color: #92600c; margin-bottom: 10px;
+    }
+    .contact-card-hint { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div>
+      <h1>{{ filename }}</h1>
+      <p>{{ row_count }} event{{ 's' if row_count != 1 else '' }}</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn-toggle" href="{{ url_for('live_feed_page') }}">&larr; Back to Email Live Feed</a>
+      <a class="btn-export" href="{{ url_for('live_feed_download', filename=filename) }}">Download CSV</a>
+    </div>
+  </div>
+</header>
+
+{% if rows %}
+<div class="filter-toolbar">
+  <span class="filter-chip active" data-type="">All</span>
+  {% for et in event_types %}
+  <span class="filter-chip" data-type="{{ et }}">{{ et }}</span>
+  {% endfor %}
+  <span class="filter-count"><span id="visibleCount">{{ row_count }}</span> of {{ row_count }} shown</span>
+</div>
+
+<div class="table-wrap" style="margin-top: 12px;">
+  <table id="liveFeedTable">
+    <colgroup>
+      {% for h in headers %}<col data-col="{{ h }}" style="width: {{ default_widths.get(h, 140) }}px;">{% endfor %}
+      <col data-col="_contact" style="width: 130px;">
+    </colgroup>
+    <thead>
+      <tr>
+        {% for h in headers %}
+        <th data-col="{{ h }}">
+          {{ h }}
+          <span class="col-resize-handle" data-col="{{ h }}"></span>
+        </th>
+        {% endfor %}
+        <th data-col="_contact">
+          Contact
+          <span class="col-resize-handle" data-col="_contact"></span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr data-event-type="{{ row.get('event_type', '') }}">
+        {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          {% if h == 'event_type' %}
+            <td>
+              {% if 'clicked' in val %}
+                <span class="event-badge event-badge-click">{{ val }}</span>
+              {% elif 'view' in val or 'open' in val %}
+                <span class="event-badge event-badge-open">{{ val }}</span>
+              {% elif 'hot-lead' in val %}
+                <span class="event-badge event-badge-hotlead">{{ val }}</span>
+              {% elif val %}
+                <span class="event-badge event-badge-other">{{ val }}</span>
+              {% endif %}
+            </td>
+          {% elif h == 'account_id' and val %}
+            <td><a class="out-link" href="https://app.salesloft.com/app/company/{{ val }}" target="_blank" rel="noopener">{{ val }} &#8599;</a></td>
+          {% elif h == 'person_id' and val %}
+            <td><a class="out-link" href="https://app.salesloft.com/app/people/{{ val }}" target="_blank" rel="noopener">{{ val }} &#8599;</a></td>
+          {% elif h == 'email_id' and val %}
+            <td><a class="out-link" href="https://app.salesloft.com/app/emails/detail/{{ val }}" target="_blank" rel="noopener">{{ val }} &#8599;</a></td>
+          {% elif h == 'email_subject' %}
+            <td class="subject-cell">{{ val }}</td>
+          {% else %}
+            <td>{{ val }}</td>
+          {% endif %}
+        {% endfor %}
+        {% set person_id = (row.get('person_id') or '').strip() %}
+        <td class="contact-cell">
+          {% if person_id %}
+            {% set contact = contacts_by_person_id.get(person_id) %}
+            {% if contact and contact.in_tracker %}
+            <button type="button" class="contact-btn" onclick="openContactCard('{{ person_id }}')">
+              <span class="contact-dot contact-dot-tracked"></span> View
+            </button>
+            {% else %}
+            <button type="button" class="contact-btn contact-btn-untracked" onclick="openContactCard('{{ person_id }}')">
+              <span class="contact-dot contact-dot-untracked"></span> Not tracked
+            </button>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">No events in this file.</p>
+{% endif %}
+
+<div id="contactModalOverlay" class="contact-modal-overlay" onclick="closeContactCardOnOverlay(event)">
+  <div class="contact-modal" onclick="event.stopPropagation()">
+    <button type="button" class="contact-modal-close" onclick="closeContactCard()">&times;</button>
+    <div id="contactModalBody"></div>
+  </div>
+</div>
+
+<script>
+// Column resize -- widths persist in localStorage per column name, so
+// they carry over across different CSV files and future visits, same
+// spirit as the tracker's own column width handling.
+(function () {
+  const STORAGE_KEY = 'liveFeedColWidths';
+  const MIN_WIDTH = 50;
+
+  function loadSavedWidths() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveWidth(colName, widthPx) {
+    try {
+      const saved = loadSavedWidths();
+      saved[colName] = widthPx;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    } catch (e) {
+      // localStorage unavailable (private browsing etc.) -- resizing
+      // still works for this page view, it just won't persist.
+    }
+  }
+
+  function applySavedWidths() {
+    const saved = loadSavedWidths();
+    document.querySelectorAll('#liveFeedTable colgroup col').forEach((col) => {
+      const name = col.dataset.col;
+      if (saved[name]) {
+        col.style.width = saved[name] + 'px';
+      }
+    });
+  }
+
+  function initResize() {
+    const table = document.getElementById('liveFeedTable');
+    if (!table) return;
+
+    let activeHandle = null;
+    let activeCol = null;
+    let startX = 0;
+    let startWidth = 0;
+
+    table.querySelectorAll('.col-resize-handle').forEach((handle) => {
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const colName = handle.dataset.col;
+        activeCol = table.querySelector('colgroup col[data-col="' + colName + '"]');
+        if (!activeCol) return;
+
+        activeHandle = handle;
+        startX = e.clientX;
+        startWidth = activeCol.getBoundingClientRect().width;
+
+        handle.classList.add('active');
+        document.body.classList.add('col-resizing');
+      });
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!activeCol) return;
+      const newWidth = Math.max(MIN_WIDTH, startWidth + (e.clientX - startX));
+      activeCol.style.width = newWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!activeCol) return;
+      const finalWidth = parseInt(activeCol.style.width, 10);
+      saveWidth(activeCol.dataset.col, finalWidth);
+
+      if (activeHandle) activeHandle.classList.remove('active');
+      document.body.classList.remove('col-resizing');
+      activeHandle = null;
+      activeCol = null;
+    });
+  }
+
+  applySavedWidths();
+  initResize();
+  initFilter();
+})();
+
+// Contact card -- one modal, populated per click from the server-built
+// person_id -> tracker-row lookup. Kept as a single reused modal rather
+// than rendering a card per row since a feed page can have hundreds of
+// rows and most contact cards are never opened.
+const CONTACTS_BY_PERSON_ID = {{ contacts_by_person_id|tojson }};
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+function openContactCard(personId) {
+  const data = CONTACTS_BY_PERSON_ID[personId];
+  const body = document.getElementById('contactModalBody');
+
+  if (!data || !data.in_tracker) {
+    body.innerHTML = `
+      <span class="contact-card-flag">Not in tracker yet</span>
+      <p class="contact-card-hint">This person is showing activity in the live feed but isn't in PG Tracker yet. Might be worth adding as a new contact.</p>
+    `;
+  } else {
+    const links = [];
+    if (data.linkedin) {
+      links.push(`<a class="contact-card-link" href="${escapeHtml(data.linkedin)}" target="_blank" rel="noopener">LinkedIn &#8599;</a>`);
+    }
+    if (data.whatsapp_link) {
+      links.push(`<a class="contact-card-link" href="${escapeHtml(data.whatsapp_link)}" target="_blank" rel="noopener">WhatsApp &#8599;</a>`);
+    }
+
+    body.innerHTML = `
+      <h3 class="contact-card-title">${escapeHtml(data.company_name) || 'Unknown company'}</h3>
+      <p class="contact-card-subtitle">${escapeHtml(data.title)}</p>
+      <div class="contact-card-meta">
+        ${data.status ? `<span class="contact-card-badge">${escapeHtml(data.status)}</span>` : ''}
+        ${data.account_executive ? `<span class="contact-card-detail">AE: ${escapeHtml(data.account_executive)}</span>` : ''}
+        ${data.phone ? `<span class="contact-card-detail">${escapeHtml(data.phone)}</span>` : ''}
+        ${data.last_contacted ? `<span class="contact-card-detail">Last contacted: ${escapeHtml(data.last_contacted)}</span>` : ''}
+      </div>
+      ${data.sentiments ? `<p class="contact-card-section"><strong>Sentiment</strong>${escapeHtml(data.sentiments)}</p>` : ''}
+      ${data.about ? `<p class="contact-card-section"><strong>About</strong>${escapeHtml(data.about)}</p>` : ''}
+      ${data.whatsapp_message ? `<p class="contact-card-section"><strong>Draft WhatsApp message</strong>${escapeHtml(data.whatsapp_message)}</p>` : ''}
+      <div class="contact-card-links">${links.join('')}</div>
+    `;
+  }
+
+  document.getElementById('contactModalOverlay').classList.add('active');
+}
+
+function closeContactCard() {
+  document.getElementById('contactModalOverlay').classList.remove('active');
+}
+
+function closeContactCardOnOverlay(e) {
+  if (e.target.id === 'contactModalOverlay') closeContactCard();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeContactCard();
+});
+
+function initFilter() {
+  const chips = document.querySelectorAll('.filter-chip');
+  const rows = document.querySelectorAll('#liveFeedTable tbody tr');
+  const visibleCountEl = document.getElementById('visibleCount');
+  if (!chips.length) return;
+
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      chips.forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      const type = chip.dataset.type;
+
+      let visible = 0;
+      rows.forEach((row) => {
+        const match = !type || row.dataset.eventType === type;
+        row.style.display = match ? '' : 'none';
+        if (match) visible += 1;
+      });
+      if (visibleCountEl) visibleCountEl.textContent = visible;
+    });
+  });
+}
+</script>
+
+</body>
+</html>

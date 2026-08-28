@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Salesloft — schedule all — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .sched-card { background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; margin-bottom:20px; }
+    .sched-meta h2 { font-size:16px; margin:0 0 4px 0; }
+    .sched-meta .email { color:#666; font-weight:normal; font-size:13px; }
+    .sched-subject-row { margin: 4px 0 12px 0; }
+    .sched-subject-row label { font-size:12px; text-transform:uppercase; color:#888; display:block; margin-bottom:4px; }
+    .sched-subject-row input { width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:14px; box-sizing:border-box; }
+    .sched-cols { display:flex; gap:16px; }
+    .sched-col { flex:1; min-width:0; }
+    .sched-col h3 { font-size:12px; text-transform:uppercase; color:#888; margin:0 0 6px 0; }
+    .sched-raw { width:100%; min-height:140px; padding:10px; border:1px solid #eee; border-radius:4px; font-size:13px; font-family: inherit; box-sizing:border-box; resize:vertical; background:#faf9f6; }
+    .sched-rendered { background:#fafcff; border:1px solid #eee; border-radius:4px; padding:10px; font-size:14px; line-height:1.5; min-height:140px; }
+    .sched-rendered p { margin:0 0 10px 0; }
+    .save-indicator { font-size:12px; color:#999; margin-left:8px; }
+    .save-indicator.saved { color:#2a7; }
+    .save-indicator.saving { color:#999; }
+    .save-indicator.error { color:#c33; }
+    .missing-warning { background:#fff4f4; border:1px solid #f0c; color:#a00; padding:12px 16px; border-radius:6px; margin:16px 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Salesloft — schedule all — review &amp; edit</h1>
+        <p>{{ row_count }} contact{{ 's' if row_count != 1 else '' }} staged{% if pending_commit %} · not yet added to the master tracker{% endif %} · edit Subject or Messaging below, changes save automatically</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('salesloft_preview') }}">← Back to staging table</a>
+    </div>
+  </header>
+
+  {% if missing_columns %}
+  <div class="missing-warning">
+    Missing column{{ 's' if missing_columns|length != 1 else '' }} in the staged CSV: {{ missing_columns|join(', ') }}.
+    Add {{ 'them' if missing_columns|length != 1 else 'it' }} via the staging table before scheduling.
+  </div>
+  {% endif %}
+
+  {% if rows %}
+  <div style="margin: 16px 24px;">
+    {% for row in rows %}
+    {% set row_idx = loop.index0 %}
+    <section class="sched-card" data-row="{{ row_idx }}">
+      <div class="sched-meta">
+        <h2>{{ row.get(col_name, '') or row.get(col_email, '') }} <span class="email">&lt;{{ row.get(col_email, '') }}&gt;</span></h2>
+      </div>
+      <div class="sched-subject-row">
+        <label>Subject</label>
+        <input type="text" class="sched-subject-input" data-col="{{ col_subject }}" value="{{ row.get(col_subject, '') }}">
+        <span class="save-indicator" data-role="subject-indicator"></span>
+      </div>
+      <div class="sched-cols">
+        <div class="sched-col">
+          <h3>Messaging (raw, editable) <span class="save-indicator" data-role="body-indicator"></span></h3>
+          <textarea class="sched-raw" data-col="{{ col_body }}">{{ row.get(col_body, '') }}</textarea>
+        </div>
+        <div class="sched-col">
+          <h3>Rendered (live — updates as you type; signature/footer are appended automatically at send time)</h3>
+          <div class="sched-rendered" data-role="rendered"></div>
+        </div>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+
+  <div style="margin: 16px 24px;">
+    <button type="button" class="btn-export" style="border:none;" onclick="runSalesloftSchedule()">
+      {% if pending_commit %}Confirm: add to tracker &amp; schedule all{% else %}Confirm &amp; schedule all{% endif %}
+    </button>
+  </div>
+  {% else %}
+  <p class="empty">Nothing staged — go back and stage some contacts first.</p>
+  {% endif %}
+
+  <div id="salesloft-schedule-log-panel" class="script-log-panel" style="display:none; margin: 0 24px 24px 24px;">
+    <div class="script-log-header">
+      <span>Salesloft — schedule all</span>
+      <span id="salesloft-schedule-status" class="script-status-badge">idle</span>
+    </div>
+    <pre id="salesloft-schedule-log-output" class="script-log-output"></pre>
+    <p style="font-size:13px; color:#666; margin:8px 0 4px 0;">
+      The script prompts three times in the log above, in order: a send date/time
+      (e.g. <code>2026-07-02 09:00</code>), then <code>SEND</code> to confirm,
+      then a blank Enter once you've logged in via SSO in the browser window it opens.
+      Type the answer and hit Reply each time it's waiting.
+    </p>
+    <div class="scraper-actions" style="align-items:center;">
+      <input type="text" id="salesloft-schedule-input" placeholder="Type the reply for whatever it's currently asking...">
+      <button type="button" class="btn-toggle" onclick="sendSalesloftScheduleSignal()">Reply</button>
+    </div>
+  </div>
+
+  <script>
+    // Mirrors build_paragraphs_html() in salesloft_automation_schedule.py
+    // exactly, so what you see here matches what actually gets scheduled.
+    function renderBody(raw) {
+      const escaped = raw
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+      return '<p>' + escaped + '</p>';
+    }
+
+    function setIndicator(el, state, label) {
+      el.className = 'save-indicator ' + state;
+      el.textContent = label;
+    }
+
+    function saveCell(rowIndex, column, value, indicatorEl) {
+      setIndicator(indicatorEl, 'saving', 'saving…');
+      fetch('{{ url_for("salesloft_preview_update_cell") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ row: rowIndex, column: column, value: value }),
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('save failed');
+          setIndicator(indicatorEl, 'saved', 'saved');
+          setTimeout(function () { indicatorEl.textContent = ''; }, 1500);
+        })
+        .catch(function () {
+          setIndicator(indicatorEl, 'error', 'could not save');
+        });
+    }
+
+    document.querySelectorAll('.sched-card').forEach(function (card) {
+      const rowIndex = card.dataset.row;
+      const textarea = card.querySelector('.sched-raw');
+      const rendered = card.querySelector('[data-role="rendered"]');
+      const subjectInput = card.querySelector('.sched-subject-input');
+      const bodyIndicator = card.querySelector('[data-role="body-indicator"]');
+      const subjectIndicator = card.querySelector('[data-role="subject-indicator"]');
+
+      rendered.innerHTML = renderBody(textarea.value);
+
+      textarea.addEventListener('input', function () {
+        rendered.innerHTML = renderBody(textarea.value);
+      });
+
+      let bodySaveTimer = null;
+      textarea.addEventListener('input', function () {
+        clearTimeout(bodySaveTimer);
+        bodySaveTimer = setTimeout(function () {
+          saveCell(rowIndex, textarea.dataset.col, textarea.value, bodyIndicator);
+        }, 800);
+      });
+      textarea.addEventListener('blur', function () {
+        clearTimeout(bodySaveTimer);
+        saveCell(rowIndex, textarea.dataset.col, textarea.value, bodyIndicator);
+      });
+
+      subjectInput.addEventListener('blur', function () {
+        saveCell(rowIndex, subjectInput.dataset.col, subjectInput.value, subjectIndicator);
+      });
+      subjectInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); subjectInput.blur(); }
+      });
+    });
+
+    let salesloftScheduleJobId = null;
+    let salesloftSchedulePollTimer = null;
+
+    function runSalesloftSchedule() {
+      if (!confirm('Start the "schedule all" flow for {{ row_count }} contact{{ "s" if row_count != 1 else "" }}? Nothing sends until you confirm inside the log below.')) return;
+      fetch('{{ url_for("salesloft_schedule_and_run") }}', { method: 'POST' })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) { alert(result.data.error || 'Could not start the automation.'); return; }
+          salesloftScheduleJobId = result.data.job_id;
+          document.getElementById('salesloft-schedule-log-panel').style.display = 'block';
+          document.getElementById('salesloft-schedule-log-output').textContent = '';
+          setSalesloftScheduleStatus('running');
+          pollSalesloftSchedule();
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+
+    function setSalesloftScheduleStatus(status) {
+      const badge = document.getElementById('salesloft-schedule-status');
+      badge.textContent = status;
+      badge.className = 'script-status-badge status-' + status;
+    }
+
+    function sendSalesloftScheduleSignal() {
+      if (!salesloftScheduleJobId) return;
+      const input = document.getElementById('salesloft-schedule-input');
+      const text = input.value;
+      fetch('/salesloft/schedule_continue/' + salesloftScheduleJobId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text }),
+      })
+        .then(function (res) { if (!res.ok) throw new Error(); input.value = ''; })
+        .catch(function () { alert('Could not send the reply.'); });
+    }
+
+    document.getElementById('salesloft-schedule-input')?.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); sendSalesloftScheduleSignal(); }
+    });
+
+    function pollSalesloftSchedule() {
+      if (salesloftSchedulePollTimer) clearInterval(salesloftSchedulePollTimer);
+      salesloftSchedulePollTimer = setInterval(function () {
+        fetch('/salesloft/schedule_status/' + salesloftScheduleJobId)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.error) { clearInterval(salesloftSchedulePollTimer); return; }
+            const out = document.getElementById('salesloft-schedule-log-output');
+            const wasAtBottom = (out.scrollHeight - out.scrollTop - out.clientHeight) < 30;
+            out.textContent = data.log.join('\n');
+            if (wasAtBottom) out.scrollTop = out.scrollHeight;
+            setSalesloftScheduleStatus(data.status);
+            if (data.status === 'done' || data.status === 'error') {
+              clearInterval(salesloftSchedulePollTimer);
+            }
+          })
+          .catch(function () { clearInterval(salesloftSchedulePollTimer); });
+      }, 1500);
+    }
+  </script>
+</body>
+</html>

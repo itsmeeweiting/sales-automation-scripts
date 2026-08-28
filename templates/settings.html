@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI generation settings — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>AI generation settings</h1>
+        <p>Default applies to every Patch except Japan. The Japan instructions are used automatically whenever a row's Patch is Japan.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  {% if saved %}
+  <div class="banner-info" style="margin: 14px 24px 0;">Saved.</div>
+  {% endif %}
+
+  <form method="post" class="settings-form">
+    {% for action_id, action_label in actions %}
+    <div class="settings-block">
+      <h2>{{ action_label }}</h2>
+      <label class="block-label">
+        <span class="textarea-label-row">
+          Default instructions
+          <button type="button" class="reset-btn" data-action="{{ action_id }}" data-variant="default">Reset to default</button>
+        </span>
+        <textarea name="{{ action_id }}__default" rows="12">{{ settings.get(action_id, {}).get('default', '') }}</textarea>
+      </label>
+      <label class="block-label">
+        <span class="textarea-label-row">
+          Japan Patch instructions
+          <button type="button" class="reset-btn" data-action="{{ action_id }}" data-variant="japan">Reset to default</button>
+        </span>
+        <textarea name="{{ action_id }}__japan" rows="12">{{ settings.get(action_id, {}).get('japan', '') }}</textarea>
+      </label>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn-export" style="border:none;">Save all instructions</button>
+  </form>
+
+  <script>
+    const DEFAULT_PROMPTS = {{ defaults | tojson }};
+    document.querySelectorAll('.reset-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const action = btn.dataset.action;
+        const variant = btn.dataset.variant;
+        const textarea = document.querySelector('textarea[name="' + action + '__' + variant + '"]');
+        const defaultText = (DEFAULT_PROMPTS[action] || {})[variant];
+        if (textarea && defaultText) {
+          if (!confirm('Replace this box with the current default instructions? You still need to click Save for it to stick.')) return;
+          textarea.value = defaultText;
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Live Feed — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Page-specific layout only -- components/colors all come from style.css */
+    .run-panel {
+      margin: 22px 28px 0;
+      padding: 22px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      max-width: 720px;
+    }
+    .run-panel h3 { margin: 0 0 10px; font-size: 0.95rem; font-weight: 600; color: var(--text); }
+    .run-panel .hint { font-size: 0.78rem; color: var(--text-muted); margin: 0 0 16px; line-height: 1.6; }
+    .run-field-label {
+      display: block;
+      font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--text-faint); margin-bottom: 6px;
+    }
+    .run-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+    .run-row input[type=number] { width: 90px; }
+    .result-link { margin-top: 12px; font-size: 0.82rem; }
+    .section-title { margin: 28px 28px 6px; font-size: 0.95rem; font-weight: 600; color: var(--text); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div>
+      <h1>Email Live Feed</h1>
+      <p>Scrapes Salesloft's Live Feed for email opens, clicks, hot leads, and other activity.</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn-toggle" href="{{ url_for('index') }}">&larr; Back to tracker</a>
+    </div>
+  </div>
+</header>
+
+<div class="banner-info">
+  <strong>Phase 1 base.</strong> No email address or Salesloft API lookup yet — that's next, once this scrape is solid.
+</div>
+
+<div class="run-panel">
+  <h3>Run a scrape</h3>
+  <p class="hint">Salesloft's live feed pagination is cumulative — page 3 already includes everything from pages 1–2, so one page number is all this needs. A browser window will open and the scrape will pause there — log into Salesloft, then click "I've logged in, continue" below.</p>
+  <div class="run-row">
+    <div>
+      <span class="run-field-label">Scrape up to page</span>
+      <input type="number" id="pageInput" min="1" value="1">
+    </div>
+    <button id="runBtn" class="btn-export" onclick="runLiveFeed()">Run scrape</button>
+    <button id="continueBtn" class="btn-export" onclick="continueLiveFeed()" style="display:none; background:var(--info); border-color:var(--info);">I've logged in, continue</button>
+  </div>
+  <div id="resultLink" class="result-link"></div>
+</div>
+
+<div class="script-log-panel" style="margin-top:14px;">
+  <div class="script-log-header">
+    <span>Run log</span>
+    <span id="statusBadge" class="script-status-badge status-idle">idle</span>
+  </div>
+  <div id="log" class="script-log-output" style="display:none;"></div>
+</div>
+
+<h3 class="section-title">Recent runs</h3>
+{% if recent_files %}
+<div class="table-wrap" style="margin: 12px 28px 28px; max-width: 720px;">
+  <table>
+    <thead>
+      <tr><th>File</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for f in recent_files %}
+      <tr>
+        <td>{{ f }}</td>
+        <td>
+          <a href="{{ url_for('live_feed_preview', filename=f) }}">Preview</a>
+          &nbsp;&middot;&nbsp;
+          <a href="{{ url_for('live_feed_download', filename=f) }}">Download CSV</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty" style="margin: 0 28px 28px;">No runs yet.</p>
+{% endif %}
+
+<script>
+let pollTimer = null;
+let currentJobId = null;
+let continueShown = false;
+
+function setBadge(status) {
+  const badge = document.getElementById('statusBadge');
+  badge.textContent = status;
+  badge.className = 'script-status-badge status-' + status;
+}
+
+function runLiveFeed() {
+  const btn = document.getElementById('runBtn');
+  const continueBtn = document.getElementById('continueBtn');
+  const log = document.getElementById('log');
+  const resultLink = document.getElementById('resultLink');
+  const page = document.getElementById('pageInput').value;
+
+  if (!page || page < 1) {
+    setBadge('error');
+    return;
+  }
+
+  btn.disabled = true;
+  continueBtn.style.display = 'none';
+  continueShown = false;
+  log.style.display = 'block';
+  log.textContent = '';
+  resultLink.innerHTML = '';
+  setBadge('queued');
+
+  const formData = new FormData();
+  formData.append('page', page);
+
+  fetch('/live-feed/run', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        setBadge('error');
+        log.style.display = 'block';
+        log.textContent = data.error;
+        btn.disabled = false;
+        return;
+      }
+      currentJobId = data.job_id;
+      poll(data.job_id);
+    });
+}
+
+function continueLiveFeed() {
+  if (!currentJobId) return;
+  const continueBtn = document.getElementById('continueBtn');
+  continueBtn.disabled = true;
+  fetch('/live-feed/continue/' + currentJobId, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      continueBtn.style.display = 'none';
+    });
+}
+
+function poll(jobId) {
+  const log = document.getElementById('log');
+  const btn = document.getElementById('runBtn');
+  const continueBtn = document.getElementById('continueBtn');
+  const resultLink = document.getElementById('resultLink');
+
+  pollTimer = setInterval(() => {
+    fetch('/live-feed/status/' + jobId)
+      .then(r => r.json())
+      .then(data => {
+        log.textContent = data.log.join('\n');
+        log.scrollTop = log.scrollHeight;
+        setBadge(data.status);
+
+        if (!continueShown && data.log.some(line => line.includes('READY_FOR_LOGIN'))) {
+          continueShown = true;
+          continueBtn.style.display = 'inline-flex';
+          continueBtn.disabled = false;
+        }
+
+        if (data.status === 'done' || data.status === 'error') {
+          clearInterval(pollTimer);
+          btn.disabled = false;
+          continueBtn.style.display = 'none';
+          if (data.status === 'done' && data.output_file) {
+            resultLink.innerHTML = 'Done — <a href="/live-feed/preview/' + data.output_file + '">view results</a>';
+          }
+        }
+      });
+  }, 1500);
+}
+</script>
+
+</body>
+</html>

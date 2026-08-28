@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone / Email Select — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Scoped, theme-neutral additions -- same convention as scraper_preview.html */
+    .cell-readonly{width:100%;max-width:150px;white-space:pre-wrap;word-break:break-word;opacity:.85;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+    .custom-flag{font-size:10px;opacity:.7;margin-top:2px;}
+    .search-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 24px 0;flex-wrap:wrap;}
+    .search-row input[type=search]{font-family:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;opacity:.9;width:240px;}
+
+    /* Direct-select source cells -- click the value where it already lives
+       instead of hunting it down again in a dropdown. */
+    .src-cell{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:12px;transition:background .12s;width:100%;max-width:150px;}
+    .src-cell:hover{background:rgba(127,127,127,.14);}
+    .src-cell input[type=radio]{margin:2px 0 0;flex-shrink:0;}
+    .src-cell.src-selected{background:rgba(16,185,129,.16);}
+    .src-cell.src-empty{cursor:not-allowed;opacity:.35;}
+    .src-cell.src-empty:hover{background:transparent;}
+    .src-cell-value{white-space:pre-wrap;word-break:break-word;}
+
+    .apply-all-btn{margin-left:6px;font-size:9px;padding:1px 5px;border-radius:4px;border:1px solid currentColor;background:transparent;opacity:.55;cursor:pointer;vertical-align:middle;}
+    .apply-all-btn:hover{opacity:1;}
+
+    /* Pending state on the final Phone/Email cell -- picked but not yet committed */
+    .cell-content.pending{outline:2px dashed #d97706;outline-offset:-2px;border-radius:3px;}
+
+    .pending-bar{display:none;align-items:center;gap:12px;margin:14px 24px 0;padding:9px 14px;border-radius:8px;border:1px dashed currentColor;font-size:13px;}
+    .pending-bar button{font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid currentColor;background:transparent;cursor:pointer;}
+    .pending-bar button:hover{opacity:.8;}
+    .pending-bar .commit-btn{font-weight:600;}
+    /* Sticky header, resizable columns, and compact/expand-on-edit for the
+       final Phone/Email cells -- same conventions as /tools/preview. */
+    #contact-select-table{border-collapse:collapse;table-layout:fixed;}
+    #contact-select-table thead th{position:sticky;top:0;z-index:2;background:var(--surface,#fff);box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;}
+    .cell-content.phone-final,.cell-content.email-final{max-height:22px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:max-height .1s ease;}
+    .cell-content.phone-final:focus,.cell-content.email-final:focus{max-height:120px;overflow:auto;white-space:pre-wrap;line-height:1.4;outline:2px solid rgba(16,185,129,.5);outline-offset:-1px;}
+    .col-resize-handle{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;user-select:none;touch-action:none;}
+    .col-resize-handle::after{content:'';position:absolute;top:0;right:3px;width:2px;height:100%;background:currentColor;opacity:.25;}
+    .col-resize-handle:hover::after,.col-resize-handle.resizing::after{opacity:.7;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Phone / Email Select</h1>
+        <p>Source: {{ source_label }} · {{ row_count }} row{{ 's' if row_count != 1 else '' }} · click a value in any source column to pick it, or type a value directly</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('tools_landing') }}">← Tools</a>
+        {% if source == 'account_staging' %}
+        <a class="btn-toggle" href="{{ url_for('account_scraper_preview') }}">← Account Scraper</a>
+        {% endif %}
+        <a class="btn-toggle" href="{{ url_for('research_builder_page', source=source) }}">Research Builder →</a>
+        <a class="btn-toggle" href="{{ url_for('contact_select_export', source=source) }}">Export CSV</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    Click a value in a source column (LinkedIn / Cognism / LeadIQ / ZoomInfo) to queue it as that row's Phone or Email. Picks are queued locally until you hit Commit All — nothing is saved until then. Typing directly into Phone/Email still saves immediately, same as before.
+  </div>
+
+  <div class="search-row">
+    <input type="search" id="searchBox" placeholder="Search company or contact…">
+    <span id="rowCountLabel"></span>
+  </div>
+
+  <div class="pending-bar" id="pendingBar">
+    <span><strong id="pendingCount">0</strong> pick(s) queued, not yet saved</span>
+    <button type="button" class="commit-btn" id="commitAllBtn">Commit All</button>
+    <button type="button" id="discardAllBtn">Discard</button>
+  </div>
+
+  {% if headers %}
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="contact-select-table">
+      <thead>
+        <tr>
+          <th style="width:160px;" data-col="Company Name">Company Name<span class="col-resize-handle"></span></th>
+          <th style="width:160px;" data-col="Contact Name">Contact Name<span class="col-resize-handle"></span></th>
+          <th style="width:60px;" data-col="Link">Link<span class="col-resize-handle"></span></th>
+          <th style="width:150px;" data-col="Phone">Phone<span class="col-resize-handle"></span></th>
+          <th style="width:190px;" data-col="Email">Email<span class="col-resize-handle"></span></th>
+          {% for col in phone_source_cols %}
+          <th style="width:140px;" data-col="phone-src-{{ col }}">{{ col }}<button type="button" class="apply-all-btn" data-field="Phone" data-source-col="{{ col }}" title="Queue this source as Phone for every row that has a value">↓ all</button><span class="col-resize-handle"></span></th>
+          {% endfor %}
+          {% for col in email_source_cols %}
+          <th style="width:170px;" data-col="email-src-{{ col }}">{{ col }}<button type="button" class="apply-all-btn" data-field="Email" data-source-col="{{ col }}" title="Queue this source as Email for every row that has a value">↓ all</button><span class="col-resize-handle"></span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}" data-company="{{ (row.get('Company Name','') or '')|lower }}" data-contact="{{ (row.get('Contact Name','') or '')|lower }}">
+          <td><div class="cell-readonly">{{ row.get('Company Name','') }}</div></td>
+          <td><div class="cell-readonly">{{ row.get('Contact Name','') }}</div></td>
+          <td>{% if row.get('LinkedIn Profile') %}<a class="open-link" href="{{ row.get('LinkedIn Profile') }}" target="_blank" rel="noopener" title="Open profile">↗</a>{% endif %}</td>
+          <td>
+            <div class="cell-content phone-final" contenteditable="true" data-field="Phone" style="width:100%;max-width:150px;">{{ row.get('Phone','') }}</div>
+          </td>
+          <td>
+            <div class="cell-content email-final" contenteditable="true" data-field="Email" style="width:100%;max-width:190px;">{{ row.get('Email','') }}</div>
+          </td>
+          {% for col in phone_source_cols %}
+          {% set val = row.get(col,'') %}
+          <td>
+            <label class="src-cell {{ 'src-selected' if val and val == row.get('Phone') else '' }} {{ 'src-empty' if not val else '' }}"
+                   data-row="{{ row_idx }}" data-field="Phone" data-source-col="{{ col }}">
+              <input type="radio" name="phone-src-{{ row_idx }}" value="{{ col }}"
+                     {% if val and val == row.get('Phone') %}checked{% endif %}
+                     {% if not val %}disabled{% endif %}>
+              <span class="src-cell-value">{{ val if val else '—' }}</span>
+            </label>
+          </td>
+          {% endfor %}
+          {% for col in email_source_cols %}
+          {% set val = row.get(col,'') %}
+          <td>
+            <label class="src-cell {{ 'src-selected' if val and val == row.get('Email') else '' }} {{ 'src-empty' if not val else '' }}"
+                   data-row="{{ row_idx }}" data-field="Email" data-source-col="{{ col }}">
+              <input type="radio" name="email-src-{{ row_idx }}" value="{{ col }}"
+                     {% if val and val == row.get('Email') %}checked{% endif %}
+                     {% if not val %}disabled{% endif %}>
+              <span class="src-cell-value">{{ val if val else '—' }}</span>
+            </label>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="{{ 5 + phone_source_cols|length + email_source_cols|length }}" class="empty-row">No rows in this source yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin: 16px 24px;">
+    {% if source != 'tracker' %}
+    <form method="post" action="{{ url_for('tools_commit_to_tracker') }}" onsubmit="return confirm('Append these {{ row_count }} rows into the live tracker.csv?');" style="display:inline;">
+      <input type="hidden" name="source" value="{{ source }}">
+      <button type="submit" class="btn-export" style="border:none;">Commit to tracker</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="empty" style="margin: 16px 24px;">No rows in this source yet.</p>
+  {% endif %}
+
+  <script>
+    const SOURCE = {{ source|tojson }};
+
+    // -- Resizable columns: drag the handle on a header cell's right edge.
+    //    Widths persist per column in localStorage so they stick across
+    //    reloads (table-layout:fixed means a th's own width drives the
+    //    whole column, no colgroup needed). --------------------------------
+
+    (function () {
+      const table = document.getElementById('contact-select-table');
+      if (!table) return;
+
+      function storageKey(col) { return 'contactSelectColWidth:' + SOURCE + ':' + col; }
+
+      table.querySelectorAll('th[data-col]').forEach(function (th) {
+        const saved = localStorage.getItem(storageKey(th.dataset.col));
+        if (saved) th.style.width = saved + 'px';
+      });
+
+      let active = null, startX = 0, startWidth = 0;
+
+      table.querySelectorAll('.col-resize-handle').forEach(function (handle) {
+        handle.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          active = handle.closest('th');
+          startX = e.clientX;
+          startWidth = active.offsetWidth;
+          handle.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+        });
+        handle.addEventListener('dblclick', function () {
+          const th = handle.closest('th');
+          th.style.width = th.dataset.col === 'Link' ? '60px' : '160px';
+          localStorage.removeItem(storageKey(th.dataset.col));
+        });
+      });
+
+      document.addEventListener('mousemove', function (e) {
+        if (!active) return;
+        active.style.width = Math.max(50, startWidth + (e.clientX - startX)) + 'px';
+      });
+
+      document.addEventListener('mouseup', function () {
+        if (!active) return;
+        localStorage.setItem(storageKey(active.dataset.col), parseInt(active.style.width, 10));
+        table.querySelectorAll('.col-resize-handle.resizing').forEach(function (h) { h.classList.remove('resizing'); });
+        document.body.style.cursor = '';
+        active = null;
+      });
+    })();
+
+    // -- Manual direct-edit of the final Phone/Email cell (unchanged behavior:
+    //    saves immediately on blur, same as before) -----------------------
+
+    function saveFinalCell(cell, revertValue) {
+      const tr = cell.closest('tr');
+      const row = tr.dataset.row;
+      const field = cell.dataset.field;
+      return fetch("{{ url_for('contact_select_update_cell') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE, row: row, field: field, value: cell.textContent }),
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('save failed');
+          cell.classList.add('saved-flash');
+          setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+          // A manual edit is authoritative -- drop any queued-but-uncommitted
+          // radio pick for this row/field so Commit All doesn't clobber it.
+          clearPending(row, field);
+        })
+        .catch(function () {
+          if (revertValue !== undefined) cell.textContent = revertValue;
+          alert('Could not save that edit — reverted.');
+        });
+    }
+
+    document.querySelectorAll('#contact-select-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        if (cell.textContent === originalValue) return;
+        saveFinalCell(cell, originalValue);
+        originalValue = cell.textContent;
+      });
+    });
+
+    // -- Direct column-select: click a value in a source column to queue it --
+
+    const pending = {}; // key `${row}:${field}` -> {row, field, source_column}
+
+    function finalCell(row, field) {
+      return document.querySelector('#contact-select-table tr[data-row="' + row + '"] .cell-content[data-field="' + field + '"]');
+    }
+
+    function clearPending(row, field) {
+      const key = row + ':' + field;
+      if (pending[key]) {
+        delete pending[key];
+        const cell = finalCell(row, field);
+        if (cell) cell.classList.remove('pending');
+        updatePendingBar();
+      }
+    }
+
+    function updatePendingBar() {
+      const count = Object.keys(pending).length;
+      document.getElementById('pendingCount').textContent = count;
+      document.getElementById('pendingBar').style.display = count ? 'flex' : 'none';
+    }
+
+    function queuePick(row, field, sourceCol, value) {
+      const key = row + ':' + field;
+      pending[key] = { row: Number(row), field: field, source_column: sourceCol };
+
+      // Visual: highlight the chosen source cell, clear any other selection
+      // in the same row/field, preview the value in the final cell.
+      document.querySelectorAll('.src-cell[data-row="' + row + '"][data-field="' + field + '"]').forEach(function (label) {
+        label.classList.toggle('src-selected', label.dataset.sourceCol === sourceCol);
+      });
+      const cell = finalCell(row, field);
+      if (cell) {
+        cell.textContent = value;
+        cell.classList.add('pending');
+      }
+      updatePendingBar();
+    }
+
+    document.querySelectorAll('.src-cell').forEach(function (label) {
+      const radio = label.querySelector('input[type=radio]');
+      if (radio.disabled) return; // no value for this source on this row
+      label.addEventListener('click', function () {
+        // Clicking anywhere in the cell selects its radio (bigger, faster
+        // target than the tiny native control).
+        radio.checked = true;
+        const value = label.querySelector('.src-cell-value').textContent;
+        queuePick(label.dataset.row, label.dataset.field, label.dataset.sourceCol, value);
+      });
+    });
+
+    // -- "↓ all" column header buttons: queue one source for every row that
+    //    actually has a value there ---------------------------------------
+
+    document.querySelectorAll('.apply-all-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const field = btn.dataset.field;
+        const sourceCol = btn.dataset.sourceCol;
+        let applied = 0;
+        document.querySelectorAll('.src-cell[data-field="' + field + '"][data-source-col="' + CSS.escape(sourceCol) + '"]').forEach(function (label) {
+          const radio = label.querySelector('input[type=radio]');
+          if (!radio || radio.disabled) return;
+          radio.checked = true;
+          const value = label.querySelector('.src-cell-value').textContent;
+          queuePick(label.dataset.row, field, sourceCol, value);
+          applied++;
+        });
+        if (!applied) alert('No rows have a value in ' + sourceCol + '.');
+      });
+    });
+
+    // -- Commit All: one batched request for every queued pick -------------
+
+    document.getElementById('commitAllBtn').addEventListener('click', function () {
+      const selections = Object.values(pending);
+      if (!selections.length) return;
+      const btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Committing…';
+      fetch("{{ url_for('contact_select_apply_bulk') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE, selections: selections }),
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'commit failed'); });
+          return res.json();
+        })
+        .then(function () {
+          Object.keys(pending).forEach(function (key) {
+            const [row, field] = key.split(':');
+            const cell = finalCell(row, field);
+            if (cell) cell.classList.remove('pending');
+          });
+          for (const k in pending) delete pending[k];
+          updatePendingBar();
+        })
+        .catch(function (err) {
+          alert('Commit failed — nothing was saved. ' + (err.message || ''));
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = 'Commit All';
+        });
+    });
+
+    document.getElementById('discardAllBtn').addEventListener('click', function () {
+      if (Object.keys(pending).length && !confirm('Discard all queued picks? Nothing has been saved yet, so this just resets the page.')) return;
+      location.reload();
+    });
+
+    // -- Search filter (unchanged) -------------------------------------------
+
+    document.getElementById('searchBox').addEventListener('input', function (e) {
+      const q = e.target.value.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll('#contact-select-table tbody tr[data-row]').forEach(function (tr) {
+        const match = !q || tr.dataset.company.includes(q) || tr.dataset.contact.includes(q);
+        tr.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      document.getElementById('rowCountLabel').textContent = q ? (visible + ' matching') : '';
+    });
+  </script>
+</body>
+</html>

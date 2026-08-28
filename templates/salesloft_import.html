@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import for Salesloft — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Import a CSV for Salesloft</h1>
+        <p>Upload contacts with Email, Subject Line, and Messaging already filled in. You'll review before anything is added to the tracker or sent.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  <div class="import-form">
+    <form method="post" action="{{ url_for('salesloft_import_upload') }}" enctype="multipart/form-data">
+      <label class="block-label">
+        CSV file
+        <input type="file" name="csv_file" accept=".csv" required>
+      </label>
+      <button type="submit" class="btn-export" style="border:none; align-self:flex-start;">Upload &amp; preview</button>
+    </form>
+  </div>
+</body>
+</html>

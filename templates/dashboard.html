@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracker — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .cell-readonly-preview { cursor: default; color: #444; background: #fafafa; border-radius: 3px; padding: 0 2px; }
+
+    /* Expand toggle button */
+    .btn-expand {
+      background: none; border: none; cursor: pointer;
+      font-size: 0.9rem; color: var(--text-muted, #888); padding: 2px 3px;
+      line-height: 1; transition: transform 0.15s ease, color 0.1s;
+      flex-shrink: 0;
+    }
+    .btn-expand:hover { color: var(--text, #222); }
+    .btn-expand.expanded { transform: rotate(180deg); }
+
+    /* Detail row */
+    .detail-row > td {
+      padding: 0 0 12px 0;
+      background: var(--bg-inset, #f5f5f5);
+      border-bottom: 1px solid var(--border, #ddd);
+    }
+    .detail-panel {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px 28px;
+      padding: 14px 18px;
+      font-size: 0.8rem;
+    }
+    .detail-field { min-width: 0; }
+    .detail-field-wide { grid-column: 1 / -1; }
+    .detail-label {
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted, #888); margin-bottom: 3px; font-weight: 600;
+    }
+    .detail-value {
+      word-break: break-word; white-space: pre-wrap;
+      color: var(--text, #222); line-height: 1.5;
+    }
+    .detail-value:empty::after { content: '—'; color: var(--text-muted, #aaa); }
+    .detail-value a { color: var(--accent, #0066cc); text-decoration: none; }
+    .detail-value a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Tracker</h1>
+        <p>{{ row_count }} contact{{ 's' if row_count != 1 else '' }} · {{ headers|length }} columns · click any cell to edit</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to Dashboard</a>
+    </div>
+  </header>
+
+
+  <div class="table-actions-row">
+    <button id="delete-selected-btn" class="btn-delete-bulk" type="button" disabled>Delete selected (0)</button>
+    <select id="bulk-gen-action" class="bulk-gen-select">
+      <option value="all">All 3 (Email + WhatsApp + Script)</option>
+      <option value="email">Email only (Subject + Messaging)</option>
+      <option value="whatsapp">WhatsApp only</option>
+      <option value="call_script">Call Script only</option>
+    </select>
+    <button id="bulk-gen-btn" class="btn-toggle" type="button" disabled>Generate selected (0)</button>
+    <button id="salesloft-selected-btn" class="btn-toggle" type="button" disabled>Send selected to Salesloft (0)</button>
+    <button id="glean-selected-btn" class="btn-toggle" type="button" disabled>Send selected to Glean Enhance (0)</button>
+    <button id="wrap-toggle" class="btn-toggle" type="button">Wrap text</button>
+    <button id="export-csv-btn" type="button" class="btn-export" onclick="exportTrackerCsv()">Export CSV</button>
+  </div>
+
+  {% if duplicates %}
+  <div class="banner">
+    <strong>Heads up:</strong> {{ duplicates|length }} contact name{{ 's' if duplicates|length != 1 else '' }} appear more than once — {{ duplicates|join(', ') }}
+  </div>
+  {% endif %}
+
+  <details class="add-contact">
+    <summary>+ Add contact manually</summary>
+    <form method="post" action="{{ url_for('add_contact') }}">
+      <div class="add-grid">
+        {% for h in headers %}
+        <label>
+          {{ h }}
+          <input type="text" name="{{ h }}" {% if h in validation_rules %}list="datalist-{{ loop.index0 }}"{% endif %}>
+          {% if h in validation_rules %}
+          <datalist id="datalist-{{ loop.index0 }}">
+            {% for v in validation_rules[h] %}
+            <option value="{{ v }}"></option>
+            {% endfor %}
+          </datalist>
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit">Add contact</button>
+    </form>
+  </details>
+
+  {% if headers %}
+  <div class="table-wrap">
+    <table id="tracker-table">
+      <colgroup>
+        <col style="width: {{ actions_col_width or 72 }}px;">
+        {% for h in headers %}
+        <col style="width: {{ default_widths.get(h, 140) }}px;">
+        {% endfor %}
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="actions-col"><input type="checkbox" id="select-all" title="Select all visible rows"></th>
+          {% for h in headers %}
+          <th data-col="{{ loop.index0 + 1 }}" class="{{ 'frozen-col' if h in frozen_offsets else '' }}"{% if h in frozen_offsets %} style="left: {{ frozen_offsets[h] }}px;"{% endif %}>{{ h }} <span class="sort-indicator"></span></th>
+          {% endfor %}
+        </tr>
+        <tr class="filter-row">
+          <th class="actions-col"></th>
+          {% for h in headers %}
+          <th class="{{ 'frozen-col' if h in frozen_offsets else '' }}"{% if h in frozen_offsets %} style="left: {{ frozen_offsets[h] }}px;"{% endif %}>
+            <input class="col-filter" data-col="{{ loop.index0 + 1 }}" placeholder="Filter…">
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}">
+          <td class="actions-col">
+            <div class="actions-col-inner">
+              <input type="checkbox" class="row-select" data-row="{{ row_idx }}">
+              <button class="btn-expand" type="button" data-row="{{ row_idx }}" title="Expand row">▾</button>
+              <form method="post" action="{{ url_for('delete_row') }}" onsubmit="return confirm('Delete this contact? This cannot be undone.');">
+                <input type="hidden" name="row" value="{{ row_idx }}">
+                <button type="submit" class="btn-delete" title="Delete this contact">🗑</button>
+              </form>
+            </div>
+          </td>
+          {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          {% set gen_action = {'Messaging': 'email', 'Whatsapp Message': 'whatsapp', 'Reference Script': 'call_script'}.get(h) %}
+          {% set options = column_options.get(h) %}
+          <td class="{{ 'frozen-col' if h in frozen_offsets else '' }}"{% if h in frozen_offsets %} style="left: {{ frozen_offsets[h] }}px;"{% endif %}>
+            <div class="cell-shell">
+              {% if h == col_body %}
+              <div class="cell-content cell-content-readonly cell-readonly-preview" data-col="{{ h }}" title="{{ val | html_preview_text }}&#10;&#10;(Formatted -- edit at the Salesloft staging step, not here.)">{{ val | html_preview_text }}</div>
+              {% elif options %}
+              <select class="cell-select" data-col="{{ h }}" data-row="{{ row_idx }}" data-current="{{ val }}" data-hydrated="0">
+                <option value="{{ val }}" selected>{{ val or '—' }}</option>
+              </select>
+              {% else %}
+              <div class="cell-content" contenteditable="true" data-col="{{ h }}">{{ val }}</div>
+              {% endif %}
+              {% if h == 'LinkedIn Profile' and val %}
+              <a class="open-link" href="{{ val }}" target="_blank" rel="noopener" title="Open profile">↗</a>
+              {% endif %}
+              {% if gen_action %}
+              <button class="gen-btn" type="button" data-row="{{ row_idx }}" data-action="{{ gen_action }}" title="Generate with local AI">✨</button>
+              {% endif %}
+            </div>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr class="empty-row-tr">
+          <td colspan="{{ headers|length + 1 }}" class="empty-row">No rows yet — add one above, or wait for Sprint 2's import.</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">tracker.csv not found in this folder. Make sure it sits next to app.py.</p>
+  {% endif %}
+
+  <div id="gen-status-toast">
+    <span class="gen-spinner"></span>
+    <span id="gen-status-text"></span>
+  </div>
+
+  <script>
+    // Wrap / clip toggle
+    const wrapBtn = document.getElementById('wrap-toggle');
+    const table = document.getElementById('tracker-table');
+    if (wrapBtn && table) {
+      wrapBtn.addEventListener('click', function () {
+        const wrapped = table.classList.toggle('wrap-mode');
+        wrapBtn.textContent = wrapped ? 'Clip text' : 'Wrap text';
+      });
+    }
+
+    // Multi-select + bulk delete
+    const selectAllCb = document.getElementById('select-all');
+    const bulkBtn = document.getElementById('delete-selected-btn');
+    const rowCheckboxes = document.querySelectorAll('.row-select');
+
+    function updateBulkButton() {
+      const checkedCount = document.querySelectorAll('.row-select:checked').length;
+      bulkBtn.textContent = 'Delete selected (' + checkedCount + ')';
+      bulkBtn.disabled = checkedCount === 0;
+      const genBtn = document.getElementById('bulk-gen-btn');
+      if (genBtn) {
+        genBtn.textContent = 'Generate selected (' + checkedCount + ')';
+        genBtn.disabled = checkedCount === 0;
+      }
+      const slBtn = document.getElementById('salesloft-selected-btn');
+      if (slBtn) {
+        slBtn.textContent = 'Send selected to Salesloft (' + checkedCount + ')';
+        slBtn.disabled = checkedCount === 0;
+      }
+      const gleanBtn = document.getElementById('glean-selected-btn');
+      if (gleanBtn) {
+        gleanBtn.textContent = 'Send selected to Glean Enhance (' + checkedCount + ')';
+        gleanBtn.disabled = checkedCount === 0;
+      }
+      const exportBtn = document.getElementById('export-csv-btn');
+      if (exportBtn) {
+        exportBtn.textContent = checkedCount === 0 ? 'Export CSV (all)' : 'Export selected (' + checkedCount + ')';
+      }
+    }
+
+    rowCheckboxes.forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        updateBulkButton();
+        const visibleBoxes = Array.from(rowCheckboxes).filter(function (c) {
+          return c.closest('tr').style.display !== 'none';
+        });
+        selectAllCb.checked = visibleBoxes.length > 0 && visibleBoxes.every(function (c) { return c.checked; });
+      });
+    });
+
+    selectAllCb.addEventListener('change', function () {
+      rowCheckboxes.forEach(function (cb) {
+        if (cb.closest('tr').style.display !== 'none') {
+          cb.checked = selectAllCb.checked;
+        }
+      });
+      updateBulkButton();
+    });
+
+    bulkBtn.addEventListener('click', function () {
+      const checked = Array.from(document.querySelectorAll('.row-select:checked'));
+      if (checked.length === 0) return;
+      if (!confirm('Delete ' + checked.length + ' contact' + (checked.length !== 1 ? 's' : '') + '? This cannot be undone.')) return;
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/delete_rows';
+      checked.forEach(function (cb) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'rows';
+        input.value = cb.dataset.row;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    });
+
+    // Click-to-sort: click a header for ascending, again for descending,
+    // a third time to return to the original CSV order.
+    let sortState = { col: null, direction: null };
+    const headerCells = document.querySelectorAll('#tracker-table thead tr:first-child th:not(.actions-col)');
+
+    function applySort() {
+      const sortTbody = document.querySelector('#tracker-table tbody');
+      // Exclude both empty-row and detail-rows from sorting -- detail rows
+      // are re-inserted after their parent rows below.
+      const sortRows = Array.from(sortTbody.querySelectorAll('tr')).filter(function (tr) {
+        return !tr.classList.contains('empty-row-tr') && !tr.classList.contains('detail-row');
+      });
+
+      sortRows.sort(function (a, b) {
+        if (sortState.col === null) {
+          return parseInt(a.dataset.row, 10) - parseInt(b.dataset.row, 10);
+        }
+        const aText = a.children[sortState.col].textContent.trim();
+        const bText = b.children[sortState.col].textContent.trim();
+        const aNum = parseFloat(aText);
+        const bNum = parseFloat(bText);
+        let cmp;
+        if (aText !== '' && bText !== '' && !isNaN(aNum) && !isNaN(bNum)) {
+          cmp = aNum - bNum;
+        } else {
+          cmp = aText.localeCompare(bText, undefined, { sensitivity: 'base' });
+        }
+        return sortState.direction === 'desc' ? -cmp : cmp;
+      });
+
+      sortRows.forEach(function (tr) { sortTbody.appendChild(tr); });
+
+      // Re-attach any open detail rows directly after their (now re-ordered) parent rows.
+      sortTbody.querySelectorAll('.detail-row').forEach(function (dr) {
+        const parentRow = sortTbody.querySelector('tr[data-row="' + dr.dataset.parentRow + '"]');
+        if (parentRow && parentRow.nextSibling !== dr) {
+          parentRow.insertAdjacentElement('afterend', dr);
+        }
+      });
+    }
+
+    function updateSortIndicators() {
+      headerCells.forEach(function (th) {
+        const indicator = th.querySelector('.sort-indicator');
+        const col = parseInt(th.dataset.col, 10);
+        indicator.textContent = sortState.col === col ? (sortState.direction === 'asc' ? '▲' : '▼') : '';
+      });
+    }
+
+    headerCells.forEach(function (th) {
+      th.addEventListener('click', function () {
+        const col = parseInt(th.dataset.col, 10);
+        if (sortState.col !== col) {
+          sortState = { col: col, direction: 'asc' };
+        } else if (sortState.direction === 'asc') {
+          sortState.direction = 'desc';
+        } else {
+          sortState = { col: null, direction: null };
+        }
+        applySort();
+        updateSortIndicators();
+      });
+    });
+
+    // Per-column filtering (AND logic across active filters)
+    const filterInputs = document.querySelectorAll('.col-filter');
+    const tbody = document.querySelector('tbody');
+    function applyFilters() {
+      const active = [];
+      filterInputs.forEach(function (inp) {
+        const val = inp.value.trim().toLowerCase();
+        if (val) active.push({ col: parseInt(inp.dataset.col, 10), val: val });
+      });
+      tbody.querySelectorAll('tr').forEach(function (tr) {
+        if (tr.classList.contains('empty-row-tr')) return;
+        if (tr.classList.contains('detail-row')) return;
+        const cells = tr.children;
+        const visible = active.every(function (f) {
+          const cell = cells[f.col];
+          return cell && cell.textContent.toLowerCase().includes(f.val);
+        });
+        tr.style.display = visible ? '' : 'none';
+        // Keep detail row visibility in sync with its parent row.
+        const detailRow = tbody.querySelector('.detail-row[data-parent-row="' + tr.dataset.row + '"]');
+        if (detailRow) detailRow.style.display = visible ? '' : 'none';
+      });
+    }
+    filterInputs.forEach(function (inp) {
+      inp.addEventListener('input', applyFilters);
+    });
+
+    // Status toast -- shared between single-button and bulk generation,
+    // so there's always a visible "something is happening" signal.
+    const genStatusToast = document.getElementById('gen-status-toast');
+    const genStatusText = document.getElementById('gen-status-text');
+    function showGenStatus(text) {
+      genStatusText.textContent = text;
+      genStatusToast.classList.add('visible');
+    }
+    function hideGenStatus() {
+      genStatusToast.classList.remove('visible');
+    }
+    const ACTION_LABELS = { email: 'Email', whatsapp: 'WhatsApp', call_script: 'Call Script' };
+
+    function contactNameForRow(tr) {
+      const cell = tr ? tr.querySelector('.cell-content[data-col="Contact Name"]') : null;
+      return (cell && cell.textContent.trim()) || 'this contact';
+    }
+
+    // Generate via local Ollama -- one button per action (Email, WhatsApp,
+    // Call Script), each may fill more than one column from one response.
+    document.querySelectorAll('.gen-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const rowIndex = btn.dataset.row;
+        const action = btn.dataset.action;
+        const tr = document.querySelector('tr[data-row="' + rowIndex + '"]');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.classList.add('loading');
+        btn.textContent = '…';
+        showGenStatus('Generating ' + (ACTION_LABELS[action] || action) + ' for ' + contactNameForRow(tr) + '…');
+
+        fetch('/generate/' + action, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ row: rowIndex }),
+        })
+          .then(function (res) {
+            return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              alert(result.data.error || 'Generation failed.');
+              return;
+            }
+            if (!tr) return;
+            const values = result.data.values || {};
+            Object.keys(values).forEach(function (field) {
+              const cell = tr.querySelector('.cell-content[data-col="' + field + '"]');
+              if (cell) cell.textContent = values[field];
+            });
+          })
+          .catch(function () {
+            alert('Could not reach the server. Is python app.py still running?');
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.classList.remove('loading');
+            btn.textContent = originalText;
+            hideGenStatus();
+          });
+      });
+    });
+
+    // Bulk generation: Email + WhatsApp + Call Script for every selected
+    // row, one action at a time. Sequential on purpose -- Ollama is one
+    // local model on this machine, so running requests in parallel would
+    // not be faster, just contend with itself.
+    const bulkGenBtn = document.getElementById('bulk-gen-btn');
+    const bulkGenActionSelect = document.getElementById('bulk-gen-action');
+
+    function getBulkActions() {
+      const mode = bulkGenActionSelect ? bulkGenActionSelect.value : 'all';
+      if (mode === 'all') return ['email', 'whatsapp', 'call_script'];
+      return [mode];
+    }
+
+    async function runBulkGeneration() {
+      const checked = Array.from(document.querySelectorAll('.row-select:checked'));
+      if (checked.length === 0) {
+        alert('Select at least one contact first.');
+        return;
+      }
+
+      const actions = getBulkActions();
+      const actionLabels = actions.map(function (a) { return ACTION_LABELS[a] || a; }).join(', ');
+      if (!confirm('Generate ' + actionLabels + ' for ' + checked.length + ' contact' + (checked.length !== 1 ? 's' : '') + '? This runs one action at a time and may take a while.')) {
+        return;
+      }
+
+      bulkGenBtn.disabled = true;
+      let successCount = 0;
+      let failCount = 0;
+      const totalSteps = checked.length * actions.length;
+      let step = 0;
+
+      for (const cb of checked) {
+        const rowIndex = cb.dataset.row;
+        const tr = document.querySelector('tr[data-row="' + rowIndex + '"]');
+        const contactName = contactNameForRow(tr);
+
+        for (const action of actions) {
+          step++;
+          showGenStatus('Step ' + step + ' of ' + totalSteps + ': ' + ACTION_LABELS[action] + ' for ' + contactName + '…');
+          try {
+            const res = await fetch('/generate/' + action, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ row: rowIndex }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              successCount++;
+              const values = data.values || {};
+              Object.keys(values).forEach(function (field) {
+                const cell = tr ? tr.querySelector('.cell-content[data-col="' + field + '"]') : null;
+                if (cell) cell.textContent = values[field];
+              });
+            } else {
+              failCount++;
+              console.error('Failed: ' + action + ' for ' + contactName, data.error);
+            }
+          } catch (err) {
+            failCount++;
+            console.error('Failed: ' + action + ' for ' + contactName, err);
+          }
+        }
+      }
+
+      hideGenStatus();
+      bulkGenBtn.disabled = false;
+      alert('Done. ' + successCount + ' of ' + totalSteps + ' generations succeeded.' + (failCount ? ' ' + failCount + ' failed -- check the browser console for details.' : ''));
+    }
+    if (bulkGenBtn) {
+      bulkGenBtn.addEventListener('click', runBulkGeneration);
+    }
+
+    function exportTrackerCsv() {
+      const checked = Array.from(document.querySelectorAll('.row-select:checked'));
+      if (checked.length === 0) {
+        window.location.href = '{{ url_for("export_csv") }}';
+        return;
+      }
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/export/selected';
+      checked.forEach(function (cb) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'rows';
+        input.value = cb.dataset.row;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    }
+
+    const salesloftSelectedBtn = document.getElementById('salesloft-selected-btn');
+    function sendSelectedToSalesloft() {
+      const checked = Array.from(document.querySelectorAll('.row-select:checked'));
+      if (checked.length === 0) {
+        alert('Select at least one contact first.');
+        return;
+      }
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/salesloft/stage_from_tracker';
+      checked.forEach(function (cb) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'rows';
+        input.value = cb.dataset.row;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    }
+    if (salesloftSelectedBtn) {
+      salesloftSelectedBtn.addEventListener('click', sendSelectedToSalesloft);
+    }
+
+    // Dropdown cells (validated columns): each <select> ships with only its
+    // current value at page load -- the full option list for a column is
+    // shared once here, then injected into a cell's <select> the moment you
+    // actually focus it, not for all 5000+ cells up front.
+    const COLUMN_OPTIONS = {{ column_options | tojson }};
+
+    function hydrateSelect(sel) {
+      if (sel.dataset.hydrated === '1') return;
+      const column = sel.dataset.col;
+      const current = sel.dataset.current;
+      const options = COLUMN_OPTIONS[column] || [];
+      sel.innerHTML = '';
+
+      const blankOpt = document.createElement('option');
+      blankOpt.value = '';
+      blankOpt.textContent = '—';
+      if (!current) blankOpt.selected = true;
+      sel.appendChild(blankOpt);
+
+      if (current && options.indexOf(current) === -1) {
+        const curOpt = document.createElement('option');
+        curOpt.value = current;
+        curOpt.textContent = current;
+        curOpt.selected = true;
+        sel.appendChild(curOpt);
+      }
+
+      options.forEach(function (opt) {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        if (opt === current) o.selected = true;
+        sel.appendChild(o);
+      });
+
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = 'Other (type your own)…';
+      sel.appendChild(customOpt);
+
+      sel.dataset.hydrated = '1';
+    }
+
+    document.querySelectorAll('.cell-select').forEach(function (sel) {
+      sel.addEventListener('focus', function () { hydrateSelect(sel); });
+    });
+
+    // Dropdown cells (validated columns): saves on change, with an
+    // escape hatch for a value outside the predefined list.
+    document.querySelectorAll('.cell-select').forEach(function (sel) {
+      let lastValue = sel.value;
+      sel.addEventListener('change', function () {
+        if (sel.value === '__custom__') {
+          const custom = prompt('Enter a custom value:', '');
+          if (custom === null || custom.trim() === '') {
+            sel.value = lastValue;
+            return;
+          }
+          let opt = Array.from(sel.options).find(function (o) { return o.value === custom; });
+          if (!opt) {
+            opt = document.createElement('option');
+            opt.value = custom;
+            opt.textContent = custom;
+            sel.insertBefore(opt, sel.firstChild);
+          }
+          sel.value = custom;
+        }
+        lastValue = sel.value;
+
+        const rowIndex = sel.dataset.row;
+        const column = sel.dataset.col;
+        fetch('/update_cell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ row: rowIndex, column: column, value: sel.value }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.warning) alert(data.warning);
+          })
+          .catch(function () {
+            alert('Could not save — is the server still running?');
+          });
+      });
+    });
+
+    // ── Expandable row detail panels ─────────────────────────────────────────
+    // Long-text fields that get a full-width slot in the detail grid.
+    const WIDE_FIELDS = new Set([
+      'Messaging', 'About', 'Experience Description', 'Reference Script',
+      'Sentiments', 'Whatsapp Message', 'Interest / Role Research',
+    ]);
+
+    function buildDetailPanel(tr) {
+      const panel = document.createElement('div');
+      panel.className = 'detail-panel';
+
+      tr.querySelectorAll('[data-col]').forEach(function (el) {
+        const col = el.dataset.col;
+
+        const field = document.createElement('div');
+        field.className = 'detail-field' + (WIDE_FIELDS.has(col) ? ' detail-field-wide' : '');
+
+        const label = document.createElement('div');
+        label.className = 'detail-label';
+        label.textContent = col;
+
+        const valueDiv = document.createElement('div');
+        valueDiv.className = 'detail-value';
+
+        if (col === 'LinkedIn Profile') {
+          const link = tr.querySelector('.open-link');
+          const href = link ? link.href : '';
+          const text = el.textContent.trim() || href;
+          if (href) {
+            const a = document.createElement('a');
+            a.href = href;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = text || href;
+            valueDiv.appendChild(a);
+          } else {
+            valueDiv.textContent = text;
+          }
+        } else if (el.tagName === 'SELECT') {
+          valueDiv.textContent = el.value || '';
+        } else {
+          valueDiv.textContent = el.textContent.trim();
+        }
+
+        field.appendChild(label);
+        field.appendChild(valueDiv);
+        panel.appendChild(field);
+      });
+
+      return panel;
+    }
+
+    function toggleExpand(btn) {
+      const rowIdx = btn.dataset.row;
+      const mainRow = tbody.querySelector('tr[data-row="' + rowIdx + '"]');
+      if (!mainRow) return;
+
+      const existing = tbody.querySelector('.detail-row[data-parent-row="' + rowIdx + '"]');
+      if (existing) {
+        existing.remove();
+        btn.classList.remove('expanded');
+        return;
+      }
+
+      const colCount = mainRow.children.length;
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'detail-row';
+      detailTr.dataset.parentRow = rowIdx;
+
+      const td = document.createElement('td');
+      td.colSpan = colCount;
+      td.appendChild(buildDetailPanel(mainRow));
+      detailTr.appendChild(td);
+
+      mainRow.insertAdjacentElement('afterend', detailTr);
+      btn.classList.add('expanded');
+    }
+
+    document.querySelectorAll('.btn-expand').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleExpand(btn);
+      });
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const glearnSelectedBtn = document.getElementById('glean-selected-btn');
+    function sendSelectedToGlean() {
+      const checked = Array.from(document.querySelectorAll('.row-select:checked'));
+      if (checked.length === 0) {
+        alert('Select at least one contact first.');
+        return;
+      }
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/glean/stage_from_tracker';
+      checked.forEach(function (cb) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'rows';
+        input.value = cb.dataset.row;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    }
+    if (glearnSelectedBtn) {
+      glearnSelectedBtn.addEventListener('click', sendSelectedToGlean);
+    }
+
+    // Inline cell editing: click a cell, edit, click away (or hit Enter) to save.
+    document.querySelectorAll('.cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+
+      cell.addEventListener('focus', function () {
+        originalValue = cell.textContent;
+      });
+
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          cell.blur();
+        }
+        if (e.key === 'Escape') {
+          cell.textContent = originalValue;
+          cell.blur();
+        }
+      });
+
+      cell.addEventListener('blur', function () {
+        const newValue = cell.textContent;
+        if (newValue === originalValue) return;
+
+        const tr = cell.closest('tr');
+        const rowIndex = tr.dataset.row;
+        const column = cell.dataset.col;
+
+        fetch('/update_cell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ row: rowIndex, column: column, value: newValue }),
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('save failed');
+            return res.json();
+          })
+          .then(function (data) {
+            if (data.warning) {
+              cell.classList.add('warning-flash');
+              setTimeout(function () { cell.classList.remove('warning-flash'); }, 1500);
+              alert(data.warning);
+            } else {
+              cell.classList.add('saved-flash');
+              setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+            }
+          })
+          .catch(function () {
+            cell.textContent = originalValue;
+            alert('Could not save that edit — reverted. Is the server still running?');
+          });
+      });
+    });
+  </script>
+</body>
+</html>

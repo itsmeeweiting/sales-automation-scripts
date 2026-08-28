@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>News Scraper</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; max-width: 1000px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h3 { margin-top: 0; }
+  .sub { color: #666; margin-bottom: 24px; font-size: 14px; }
+  .panel { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  input[type=number], input[type=text] { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; }
+  input[type=number] { width: 100px; }
+  input[type=text] { width: 240px; }
+  button { background: #00684A; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button:disabled { background: #999; cursor: default; }
+  button.secondary { background: #eee; color: #333; padding: 6px 12px; font-size: 13px; }
+  #log { background: #0d1117; color: #c9d1d9; font-family: monospace; font-size: 12.5px; padding: 14px; border-radius: 6px; height: 320px; overflow-y: auto; white-space: pre-wrap; margin-top: 16px; display: none; }
+  .status { font-size: 13px; margin-top: 10px; }
+  .status.running { color: #b8860b; }
+  .status.done { color: #00684A; }
+  .status.error { color: #b00020; }
+  .status.stopped { color: #955f00; }
+  table.recent { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.recent td { padding: 8px; border-bottom: 1px solid #eee; }
+  table.recent a { color: #00684A; text-decoration: none; margin-right: 12px; }
+
+  .account-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .chip { background: #f0f0ee; border: 1px solid #ddd; border-radius: 14px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; }
+  .chip.active { background: #00684A; color: white; border-color: #00684A; }
+  .selected-count { font-size: 13px; color: #444; margin-left: auto; }
+  .account-table-wrap { max-height: 380px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; }
+  table.accounts { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.accounts th { position: sticky; top: 0; background: #f5f5f3; text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+  table.accounts td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+  table.accounts tr.hidden-row { display: none; }
+
+  table.keywords { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.keywords th { text-align: left; padding: 6px 8px; background: #f5f5f3; position: sticky; top: 0; }
+  table.keywords td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+  table.keywords tr.hidden-row { display: none; }
+</style>
+</head>
+<body>
+
+<a href="{{ url_for('index') }}" style="font-size:13px; color:#00684A; text-decoration:none;">&larr; Back to tracker</a>
+
+<h1>News Scraper</h1>
+<div class="sub">Accounts + keyword signal monitoring, pulled from your accounts library ({{ account_count }} accounts) and keywords.csv.</div>
+
+<div class="panel">
+  <h3>Select accounts</h3>
+  <div class="account-toolbar">
+    <input type="text" id="accountSearch" placeholder="Filter by name or patch...">
+    <span class="chip active" data-patch="">All</span>
+    <span class="chip" data-patch="Malaysia">Malaysia</span>
+    <span class="chip" data-patch="Indonesia">Indonesia</span>
+    <span class="chip" data-patch="Japan">Japan</span>
+    <span class="selected-count"><span id="selectedCount">0</span> selected</span>
+  </div>
+  <div class="account-table-wrap">
+    <table class="accounts">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAllVisible" title="Select all visible rows"></th>
+          <th>Company Name</th>
+          <th>Alternative Name</th>
+          <th>Patch</th>
+          <th>Industry</th>
+          <th>Tier</th>
+        </tr>
+      </thead>
+      <tbody id="accountRows">
+        {% for a in accounts %}
+        <tr data-name="{{ a.name|lower }}" data-altname="{{ a.alt_name|lower }}" data-patch="{{ a.patch }}">
+          <td><input type="checkbox" class="account-cb" value="{{ a.name }}"></td>
+          <td>{{ a.name }}</td>
+          <td>{{ a.alt_name or '—' }}</td>
+          <td>{{ a.patch }}</td>
+          <td>{{ a.industry }}</td>
+          <td>{{ a.tier }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:12.5px; color:#888; margin-top:8px; margin-bottom:0;">
+    Nothing selected = run the full account list. Selecting one or more runs only those.
+  </p>
+</div>
+
+<div class="panel">
+  <h3>Select keywords (industry signal queries)</h3>
+  {% if keyword_rows %}
+  <div class="account-toolbar">
+    <input type="text" id="keywordSearch" placeholder="Filter by query, industry, or patch...">
+    <span class="chip keyword-chip active" data-patch="">All</span>
+    <span class="chip keyword-chip" data-patch="Malaysia">Malaysia</span>
+    <span class="chip keyword-chip" data-patch="Indonesia">Indonesia</span>
+    <span class="chip keyword-chip" data-patch="Japan">Japan</span>
+    <span class="selected-count"><span id="selectedKeywordCount">0</span> selected</span>
+  </div>
+  <div class="account-table-wrap">
+    <table class="keywords">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAllKeywordsVisible" title="Select all visible rows"></th>
+          {% for h in keyword_headers %}<th>{{ h }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody id="keywordRows">
+        {% for row in keyword_rows %}
+        <tr data-query="{{ (row.get('query','') or '')|lower }}" data-industry="{{ (row.get('industry','') or '')|lower }}" data-patch="{{ row.get('patch','') or '' }}">
+          <td><input type="checkbox" class="keyword-cb" value="{{ loop.index0 }}"></td>
+          {% for h in keyword_headers %}<td>{{ row.get(h, '') }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:12.5px; color:#888; margin-top:8px; margin-bottom:0;">
+    Nothing selected = run all active keywords. Selecting one or more runs only those (regardless of their Active flag).
+  </p>
+  {% else %}
+  <p style="color:#888; font-size:13px;">No keywords yet.</p>
+  {% endif %}
+  <p style="margin-top:12px;">
+    <a class="btn-toggle" href="{{ url_for('library_page', name='news_keywords') }}" style="background:#eee; color:#333; padding:6px 12px; border-radius:6px; font-size:13px; text-decoration:none;">
+      Edit keywords &rarr;
+    </a>
+  </p>
+</div>
+
+<div class="panel">
+  <h3>Run</h3>
+  <label for="limit">Test with first N selected accounts (optional — leave blank to run all selected/full list)</label>
+  <input type="number" id="limit" min="1" placeholder="e.g. 5">
+  <br><br>
+  <button id="runBtn" onclick="runNews()">Run scrape</button>
+  <button id="stopBtn" class="secondary" onclick="stopNews()" style="display:none;">Stop &amp; save progress</button>
+  <span id="statusText" class="status"></span>
+  <div id="log"></div>
+</div>
+
+<div class="panel">
+  <h3>Recent runs</h3>
+  {% if recent_files %}
+  <table class="recent">
+    {% for f in recent_files %}
+    <tr>
+      <td>{{ f }}</td>
+      <td>
+        <a href="{{ url_for('news_preview', filename=f) }}">Preview</a>
+        <a href="{{ url_for('news_download', filename=f) }}">Download CSV</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:#888; font-size:13px;">No runs yet.</p>
+  {% endif %}
+</div>
+
+<div class="panel" style="background:#f7f7f5;">
+  <strong>Getting it into the tracker:</strong> once a run finishes, download the CSV and bring it in through
+  <a href="{{ url_for('import_page') }}">Import</a> using the "Google News Scrape" profile — it's already set up
+  to map <code>company_name</code> → Company Name and <code>country</code> → Patch.
+</div>
+
+<script>
+// ── Account filter + selection ──
+const searchInput = document.getElementById('accountSearch');
+const chips = document.querySelectorAll('.chip:not(.keyword-chip)');
+const rows = document.querySelectorAll('#accountRows tr');
+const selectAllVisible = document.getElementById('selectAllVisible');
+const selectedCountEl = document.getElementById('selectedCount');
+let activePatch = '';
+
+function applyFilter() {
+  const term = searchInput.value.trim().toLowerCase();
+  rows.forEach(row => {
+    const name = row.dataset.name;
+    const altName = row.dataset.altname;
+    const patch = row.dataset.patch;
+    const matchesPatch = !activePatch || patch === activePatch;
+    const matchesSearch = !term || name.includes(term) || altName.includes(term) || patch.toLowerCase().includes(term);
+    row.classList.toggle('hidden-row', !(matchesPatch && matchesSearch));
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const count = document.querySelectorAll('.account-cb:checked').length;
+  selectedCountEl.textContent = count;
+}
+
+searchInput.addEventListener('input', applyFilter);
+
+chips.forEach(chip => {
+  chip.addEventListener('click', () => {
+    chips.forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activePatch = chip.dataset.patch;
+    applyFilter();
+  });
+});
+
+selectAllVisible.addEventListener('change', () => {
+  rows.forEach(row => {
+    if (!row.classList.contains('hidden-row')) {
+      row.querySelector('.account-cb').checked = selectAllVisible.checked;
+    }
+  });
+  updateSelectedCount();
+});
+
+document.querySelectorAll('.account-cb').forEach(cb => {
+  cb.addEventListener('change', updateSelectedCount);
+});
+
+// ── Keyword filter + selection (same pattern as accounts above) ──
+const keywordSearchInput = document.getElementById('keywordSearch');
+const keywordRows = document.querySelectorAll('#keywordRows tr');
+const selectAllKeywordsVisible = document.getElementById('selectAllKeywordsVisible');
+const selectedKeywordCountEl = document.getElementById('selectedKeywordCount');
+let activeKeywordPatch = '';
+
+if (keywordSearchInput) {
+  function applyKeywordFilter() {
+    const term = keywordSearchInput.value.trim().toLowerCase();
+    keywordRows.forEach(row => {
+      const query = row.dataset.query;
+      const industry = row.dataset.industry;
+      const patch = row.dataset.patch;
+      const matchesPatch = !activeKeywordPatch || patch === activeKeywordPatch;
+      const matchesSearch = !term || query.includes(term) || industry.includes(term) || patch.toLowerCase().includes(term);
+      row.classList.toggle('hidden-row', !(matchesPatch && matchesSearch));
+    });
+    updateSelectedKeywordCount();
+  }
+
+  function updateSelectedKeywordCount() {
+    selectedKeywordCountEl.textContent = document.querySelectorAll('.keyword-cb:checked').length;
+  }
+
+  keywordSearchInput.addEventListener('input', applyKeywordFilter);
+
+  const keywordChips = document.querySelectorAll('.keyword-chip');
+  keywordChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      keywordChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeKeywordPatch = chip.dataset.patch;
+      applyKeywordFilter();
+    });
+  });
+
+  selectAllKeywordsVisible.addEventListener('change', () => {
+    keywordRows.forEach(row => {
+      if (!row.classList.contains('hidden-row')) {
+        row.querySelector('.keyword-cb').checked = selectAllKeywordsVisible.checked;
+      }
+    });
+    updateSelectedKeywordCount();
+  });
+
+  document.querySelectorAll('.keyword-cb').forEach(cb => {
+    cb.addEventListener('change', updateSelectedKeywordCount);
+  });
+}
+
+// ── Run + stop + poll ──
+let pollTimer = null;
+let currentJobId = null;
+
+function setRunningUI(isRunning) {
+  document.getElementById('runBtn').disabled = isRunning;
+  document.getElementById('stopBtn').style.display = isRunning ? 'inline-block' : 'none';
+  document.getElementById('stopBtn').disabled = false;
+}
+
+function runNews() {
+  const log = document.getElementById('log');
+  const statusText = document.getElementById('statusText');
+  const limit = document.getElementById('limit').value;
+  const selectedAccounts = Array.from(document.querySelectorAll('.account-cb:checked')).map(cb => cb.value);
+  const selectedKeywords = Array.from(document.querySelectorAll('.keyword-cb:checked')).map(cb => cb.value);
+
+  setRunningUI(true);
+  log.style.display = 'block';
+  log.textContent = '';
+  statusText.textContent = 'starting...';
+  statusText.className = 'status running';
+
+  const formData = new FormData();
+  if (limit) formData.append('limit', limit);
+  selectedAccounts.forEach(name => formData.append('companies', name));
+  selectedKeywords.forEach(idx => formData.append('keywords', idx));
+
+  fetch('/news/run', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        statusText.textContent = data.error;
+        statusText.className = 'status error';
+        setRunningUI(false);
+        return;
+      }
+      currentJobId = data.job_id;
+      poll(data.job_id);
+    });
+}
+
+function stopNews() {
+  if (!currentJobId) return;
+  const statusText = document.getElementById('statusText');
+  const stopBtn = document.getElementById('stopBtn');
+
+  stopBtn.disabled = true;
+  statusText.textContent = 'stopping — finishing current article and saving progress...';
+  statusText.className = 'status running';
+
+  fetch('/news/stop/' + currentJobId, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        statusText.textContent = data.error;
+        statusText.className = 'status error';
+        stopBtn.disabled = false;
+      }
+      // On success, just keep polling -- the running job will flip to
+      // "stopped" once main.py finishes writing the partial output.
+    });
+}
+
+function poll(jobId) {
+  const log = document.getElementById('log');
+  const statusText = document.getElementById('statusText');
+
+  pollTimer = setInterval(() => {
+    fetch('/news/status/' + jobId)
+      .then(r => r.json())
+      .then(data => {
+        log.textContent = data.log.join('\n');
+        log.scrollTop = log.scrollHeight;
+        statusText.textContent = data.status;
+        statusText.className = 'status ' + data.status;
+
+        if (data.status === 'done' || data.status === 'error' || data.status === 'stopped') {
+          clearInterval(pollTimer);
+          setRunningUI(false);
+          if ((data.status === 'done' || data.status === 'stopped') && data.output_file) {
+            const label = data.status === 'stopped' ? 'stopped — partial results saved' : 'done';
+            statusText.innerHTML = label + ' — <a href="/news/preview/' + data.output_file + '">view results</a>';
+            statusText.className = 'status ' + data.status;
+          }
+        }
+      });
+  }, 1500);
+}
+</script>
+
+</body>
+</html>

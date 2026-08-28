@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview import — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Preview: {{ display_name }}</h1>
+        <p>{{ row_count }} row{{ 's' if row_count != 1 else '' }} detected · showing the first 5 mapped, all {{ canonical_columns|length }} columns</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('import_edit', token=token, source_id=source_id) }}">Edit this mapping</a>
+        <a class="btn-toggle" href="{{ url_for('import_page') }}">← Start over</a>
+      </div>
+    </div>
+  </header>
+
+  <form method="post" action="{{ url_for('import_commit') }}">
+    <input type="hidden" name="source_id" value="{{ source_id }}">
+    <input type="hidden" name="token" value="{{ token }}">
+
+    {% if manual_fields %}
+    <div class="banner-info">
+      <strong>These apply to every row in this import — fill in once:</strong>
+      <div class="add-grid">
+        {% for mf in manual_fields %}
+        <label>
+          {{ mf.field }}
+          <input type="text" name="{{ mf.field }}" value="{{ mf.default }}">
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="table-wrap" style="margin-top: 16px;">
+      <table>
+        <thead>
+          <tr>
+            {% for col in canonical_columns %}
+            <th style="width: 140px; max-width: 140px;">{{ col }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preview_rows %}
+          <tr>
+            {% for col in canonical_columns %}
+            <td><div class="cell-content" style="max-width: 140px;">{{ row.get(col, '') }}</div></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin: 16px 24px;">
+      <button type="submit" class="btn-export" style="border:none;">Add all {{ row_count }} rows to tracker</button>
+    </div>
+  </form>
+</body>
+</html>

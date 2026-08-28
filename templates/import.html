@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Import a CSV</h1>
+        <p>Pick the source it came from, then upload the raw export.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  <div class="import-form">
+    <form method="post" action="{{ url_for('import_preview') }}" enctype="multipart/form-data">
+      <label class="block-label">
+        Source
+        <select name="source_id" required>
+          <option value="" disabled selected>Select a source…</option>
+          {% for id, profile in profiles.items() %}
+          <option value="{{ id }}">{{ profile.display_name }}</option>
+          {% endfor %}
+          <option value="__new__">+ Define new source</option>
+        </select>
+      </label>
+      <label class="block-label">
+        CSV file
+        <input type="file" name="csv_file" accept=".csv" required>
+      </label>
+      <button type="submit" class="btn-export" style="border:none;">Preview mapping</button>
+    </form>
+  </div>
+</body>
+</html>

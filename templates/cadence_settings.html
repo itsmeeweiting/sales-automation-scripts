@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cadence settings — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .cadence-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 16px 24px; }
+    .cadence-form label { display: flex; flex-direction: column; font-size: 12px; text-transform: uppercase; color: #888; gap: 4px; }
+    .cadence-form input { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    .cadence-form input[name="label"] { width: 220px; }
+    .cadence-form input[name="cadence_id"] { width: 140px; }
+    .cadence-form input[name="name"] { width: 280px; }
+    .help-text { color: #888; font-size: 13px; margin: 0 24px 8px 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Cadence settings</h1>
+        <p>Cadences you can target from the "Define stage" screen — no more hardcoding a cadence into the scripts.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  <p class="help-text">
+    Only the numeric Cadence ID is ever used by the automation — the current cadence <em>name</em> is always
+    re-fetched live from Salesloft right before it's needed, so renaming a cadence in Salesloft won't break
+    anything here. The "Name" field below is just a reference label so you can tell cadences apart at a glance;
+    it's optional and won't be kept in sync automatically — re-save it if the cadence gets renamed.
+  </p>
+
+  <form class="cadence-form" method="post" action="{{ url_for('cadence_settings_add') }}">
+    <label>Label
+      <input type="text" name="label" placeholder="e.g. Japan Key Accounts" required>
+    </label>
+    <label>Cadence ID
+      <input type="number" name="cadence_id" placeholder="e.g. 826963" required>
+    </label>
+    <label>Name (optional, reference only)
+      <input type="text" name="name" placeholder="e.g. FY27Q2 | Key Accounts | Auto Follow-Up">
+    </label>
+    <button type="submit" class="btn-export" style="border:none;">Add cadence</button>
+  </form>
+
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="cadence-table">
+      <thead>
+        <tr>
+          <th class="actions-col"></th>
+          <th style="width: 220px;">Label</th>
+          <th style="width: 140px;">Cadence ID</th>
+          <th>Name (reference)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cadences %}
+        <tr data-id="{{ c.id }}">
+          <td class="actions-col">
+            <form method="post" action="{{ url_for('cadence_settings_delete', cadence_id=c.id) }}" onsubmit="return confirm('Remove this cadence from the list?');">
+              <button type="submit" class="btn-delete" title="Remove">🗑</button>
+            </form>
+          </td>
+          <td>
+            <div class="cell-content" contenteditable="true" data-field="label">{{ c.label }}</div>
+          </td>
+          <td>{{ c.id }}</td>
+          <td>
+            <div class="cell-content" contenteditable="true" data-field="name">{{ c.name or '' }}</div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not cadences %}
+        <tr><td colspan="4" class="empty-row">No cadences saved yet — add one above.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    document.querySelectorAll('#cadence-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        const newValue = cell.textContent;
+        if (newValue === originalValue) return;
+        const tr = cell.closest('tr');
+        const cadenceId = tr.dataset.id;
+        const field = cell.dataset.field;
+        fetch('{{ url_for("cadence_settings_update", cadence_id=0) }}'.replace('/0', '/' + cadenceId), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ field: field, value: newValue }),
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('save failed');
+            cell.classList.add('saved-flash');
+            setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+          })
+          .catch(function () {
+            cell.textContent = originalValue;
+            alert('Could not save that edit — reverted.');
+          });
+      });
+    });
+  </script>
+</body>
+</html>

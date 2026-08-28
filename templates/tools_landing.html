@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Finisher Tools — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Contact Finisher tools</h1>
+        <p>Preview and clean up a batch of contacts in one place — mass-edit columns, delete rows, resize as needed — then move into Research Builder, Phone / Email Select, or Glean Message Enhance from there. Pick a source below.</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('dashboard_page') }}">← Tracker</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="breakdown-grid" style="margin: 16px 24px;">
+    <div class="breakdown-card">
+      <div class="breakdown-title">{{ source_labels.staging }}</div>
+      {% if has_staging %}
+      <p>{{ staging_row_count }} row{{ 's' if staging_row_count != 1 else '' }} ready.
+        {% if staging_sync_info %}
+        ↻ Synced from <code>{{ staging_sync_info.output_file }}</code> · {{ staging_sync_info.synced_at.replace('T', ' ') }}
+        {% else %}
+        <span style="opacity:.7;">⚠ No sync record for this file — if this doesn't look like your latest run, check it directly.</span>
+        {% endif %}
+      </p>
+      <div class="header-actions" style="justify-content:flex-start;">
+        <a class="btn-toggle" href="{{ url_for('tools_preview_page', source='staging') }}">Open preview</a>
+      </div>
+      {% else %}
+      <p class="empty">No LinkedIn URL Scraper staging file yet — run the URL scraper first.</p>
+      {% endif %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">{{ source_labels.account_staging }}</div>
+      {% if has_account_staging %}
+      <p>{{ account_staging_row_count }} row{{ 's' if account_staging_row_count != 1 else '' }} ready.
+        {% if account_staging_sync_info %}
+        ↻ Synced from <code>{{ account_staging_sync_info.output_file }}</code> · {{ account_staging_sync_info.synced_at.replace('T', ' ') }}
+        {% else %}
+        <span style="opacity:.7;">⚠ No sync record for this file — if this doesn't look like your latest run, check it directly.</span>
+        {% endif %}
+      </p>
+      <div class="header-actions" style="justify-content:flex-start;">
+        <a class="btn-toggle" href="{{ url_for('tools_preview_page', source='account_staging') }}">Open preview</a>
+      </div>
+      {% else %}
+      <p class="empty">No account scraper staging file yet — run the account scraper first.</p>
+      {% endif %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">{{ source_labels.tracker }}</div>
+      {% if has_tracker %}
+      <p>Ready to use.</p>
+      <div class="header-actions" style="justify-content:flex-start;">
+        <a class="btn-toggle" href="{{ url_for('tools_preview_page', source='tracker') }}">Open preview</a>
+      </div>
+      {% else %}
+      <p class="empty">Tracker is empty.</p>
+      {% endif %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">Upload a CSV</div>
+      <p>One-off file — not tied to the tracker until you choose to commit it. After uploading you'll land on the same preview, with an option to switch sources at any time.</p>
+      <form method="post" action="{{ url_for('tools_upload') }}" enctype="multipart/form-data">
+        <input type="file" name="csv_file" accept=".csv" required style="margin-bottom:10px; display:block;">
+        <div class="header-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn-toggle">Upload → Preview</button>
+        </div>
+      </form>
+      {% if has_upload %}
+      <p style="margin-top:10px;">Already uploaded one this session —
+        <a href="{{ url_for('tools_preview_page', source='upload') }}">reopen preview</a>
+      </p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

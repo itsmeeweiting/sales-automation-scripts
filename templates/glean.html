@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glean Message Enhance — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Glean Message Enhance</h1>
+        <p>Generates Subject Line, Messaging, Reference Script, and WhatsApp Message via Glean for a batch of contacts. Use rows already in the tracker, or upload a fresh CSV.</p>
+        <p>Once staged, each row has an editable "Additional Context" column — leave it blank for the usual generic prompt, or fill it in (e.g. "part of the IDC campaign, use that as the hook") to have it appended to that row's email, WhatsApp, and cold call prompts.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  {% if has_input_staging %}
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    There's an unreviewed batch already staged from a previous run.
+    <a href="{{ url_for('glean_preview', stage='input') }}">Review it</a> before starting a new one — staging a new batch will overwrite it.
+  </div>
+  {% endif %}
+
+  <div class="import-form">
+    <p style="margin: 0 0 8px; font-size: 13px; color: #525252;">
+      To use rows already in the tracker: go back, check the contacts you want, and click "Send selected to Glean Enhance."
+    </p>
+    <label class="block-label">
+      Or upload a CSV of new contacts (Company Name, Contact Name, Title / Role, LinkedIn Profile, Interest / Role Research)
+      <input type="file" id="glean-csv-file" accept=".csv" required>
+    </label>
+    <button type="button" class="btn-export" style="border:none; align-self:flex-start;" onclick="uploadGleanCsv()">Upload &amp; preview</button>
+  </div>
+
+  <script>
+    function uploadGleanCsv() {
+      const fileInput = document.getElementById('glean-csv-file');
+      if (!fileInput.files.length) { alert('Choose a CSV first.'); return; }
+      const formData = new FormData();
+      formData.append('csv_file', fileInput.files[0]);
+      fetch('/glean/upload', { method: 'POST', body: formData })
+        .then(function (res) {
+          if (res.redirected) { window.location.href = res.url; return; }
+          window.location.reload();
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+  </script>
+</body>
+</html>

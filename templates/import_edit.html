@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ 'Edit mapping' if source_id else 'Define a new source' }} — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>{{ 'Edit mapping: ' + display_name if source_id else 'Define a new source' }}</h1>
+        <p>Detected {{ headers|length }} columns in your upload · configure how each of the {{ canonical_columns|length }} PG Tracker fields gets filled</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('import_page') }}">← Cancel</a>
+    </div>
+  </header>
+
+  <form method="post" action="{{ url_for('import_save_mapping') }}" class="mapping-form">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="source_id" value="{{ source_id }}">
+
+    <label class="block-label" style="margin: 16px 24px;">
+      Source name
+      <input
+        type="text"
+        name="display_name"
+        value="{{ display_name }}"
+        placeholder="e.g. AIBP KL 2026 attendee list"
+        {{ 'readonly' if source_id else '' }}
+        required
+      >
+    </label>
+
+    <div class="mapping-rows">
+      {% for col in canonical_columns %}
+      {% set current = mappings[col] %}
+      <div class="mapping-row">
+        <div class="mapping-row-header">
+          <strong>{{ col }}</strong>
+          <select class="type-select" name="type__{{ col }}">
+            <option value="blank" {{ 'selected' if current.type == 'blank' else '' }}>Leave blank</option>
+            <option value="column" {{ 'selected' if current.type == 'column' else '' }}>From a column</option>
+            <option value="concat" {{ 'selected' if current.type == 'concat' else '' }}>Combine two columns</option>
+            <option value="static" {{ 'selected' if current.type == 'static' else '' }}>Always this value</option>
+            <option value="manual" {{ 'selected' if current.type == 'manual' else '' }}>Ask me each time</option>
+          </select>
+        </div>
+
+        <div class="sub-input sub-column" style="display: {{ 'flex' if current.type == 'column' else 'none' }};">
+          <select name="column__{{ col }}">
+            {% for h in headers %}
+            <option value="{{ h }}" {{ 'selected' if current.raw == h else '' }}>{{ h }}</option>
+            {% endfor %}
+          </select>
+          <label class="checkbox-label">
+            <input type="checkbox" name="invert__{{ col }}" {{ 'checked' if current.invert else '' }}>
+            Invert true/false
+          </label>
+        </div>
+
+        <div class="sub-input sub-concat" style="display: {{ 'flex' if current.type == 'concat' else 'none' }};">
+          <select name="concat1__{{ col }}">
+            {% for h in headers %}
+            <option value="{{ h }}" {{ 'selected' if current.concat1 == h else '' }}>{{ h }}</option>
+            {% endfor %}
+          </select>
+          <span>+</span>
+          <select name="concat2__{{ col }}">
+            {% for h in headers %}
+            <option value="{{ h }}" {{ 'selected' if current.concat2 == h else '' }}>{{ h }}</option>
+            {% endfor %}
+          </select>
+          <span>joined with</span>
+          <input type="text" name="sep__{{ col }}" value="{{ current.separator if current.separator is defined else ' ' }}" class="sep-input">
+        </div>
+
+        <div class="sub-input sub-static" style="display: {{ 'block' if current.type == 'static' else 'none' }};">
+          <input type="text" name="static__{{ col }}" value="{{ current.value }}" placeholder="Fixed value for every row">
+        </div>
+
+        <div class="sub-input sub-manual" style="display: {{ 'block' if current.type == 'manual' else 'none' }};">
+          <input type="text" name="manual__{{ col }}" value="{{ current.default }}" placeholder="Default (optional) — you confirm this each import">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="margin: 16px 24px;">
+      <button type="submit" class="btn-export" style="border:none;">Save source</button>
+    </div>
+  </form>
+
+  <script>
+    document.querySelectorAll('.type-select').forEach(function (sel) {
+      function update() {
+        const row = sel.closest('.mapping-row');
+        row.querySelectorAll('.sub-input').forEach(function (el) { el.style.display = 'none'; });
+        let target = null;
+        let display = 'block';
+        if (sel.value === 'column') { target = '.sub-column'; display = 'flex'; }
+        else if (sel.value === 'concat') { target = '.sub-concat'; display = 'flex'; }
+        else if (sel.value === 'static') { target = '.sub-static'; display = 'block'; }
+        else if (sel.value === 'manual') { target = '.sub-manual'; display = 'block'; }
+        if (target) {
+          const el = row.querySelector(target);
+          if (el) el.style.display = display;
+        }
+      }
+      sel.addEventListener('change', update);
+    });
+  </script>
+</body>
+</html>

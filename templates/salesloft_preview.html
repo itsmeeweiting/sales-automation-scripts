@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Salesloft preview — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Salesloft — review before sending</h1>
+        <p>{{ row_count }} contact{{ 's' if row_count != 1 else '' }} staged{% if pending_commit %} · not yet added to the master tracker{% endif %} · click any cell to edit</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to tracker</a>
+    </div>
+  </header>
+
+  {% if headers %}
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="salesloft-table">
+      <thead>
+        <tr>
+          <th class="actions-col"></th>
+          {% for h in headers %}
+          <th style="width: 160px; max-width: 160px;">{{ h }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}">
+          <td class="actions-col">
+            <form method="post" action="{{ url_for('salesloft_preview_delete_row') }}" onsubmit="return confirm('Remove this contact from the Salesloft batch?');">
+              <input type="hidden" name="row" value="{{ row_idx }}">
+              <button type="submit" class="btn-delete" title="Remove from batch">🗑</button>
+            </form>
+          </td>
+          {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          <td>
+            <div class="cell-content" contenteditable="true" data-col="{{ h }}" style="width: 100%; max-width: 160px;">{{ val }}</div>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="{{ headers|length + 1 }}" class="empty-row">Nothing staged.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin: 16px 24px; display:flex; gap:12px; flex-wrap:wrap;">
+    <button type="button" class="btn-export" style="border:none;" onclick="runSalesloft()">
+      {% if pending_commit %}Confirm: add to tracker &amp; run Salesloft{% else %}Confirm &amp; run Salesloft{% endif %}
+    </button>
+    <a class="btn-export" style="border:none; text-decoration:none; display:inline-flex; align-items:center;" href="{{ url_for('salesloft_schedule_preview') }}">
+      Schedule all (send later) →
+    </a>
+  </div>
+  {% else %}
+  <p class="empty">Nothing staged for Salesloft yet — select rows in the tracker and click "Send selected to Salesloft," or import a CSV.</p>
+  {% endif %}
+
+  <div id="salesloft-log-panel" class="script-log-panel" style="display:none;">
+    <div class="script-log-header">
+      <span>Salesloft automation</span>
+      <span id="salesloft-status" class="script-status-badge">idle</span>
+    </div>
+    <pre id="salesloft-log-output" class="script-log-output"></pre>
+    <div class="scraper-actions">
+      <button type="button" class="btn-toggle" onclick="sendSalesloftSignal('')">Logged in / Sent — Continue</button>
+      <button type="button" class="btn-delete-bulk" onclick="sendSalesloftSignal('skip')">Skip this contact</button>
+    </div>
+  </div>
+
+  <script>
+    let salesloftJobId = null;
+    let salesloftPollTimer = null;
+
+    function runSalesloft() {
+      if (!confirm('Run the Salesloft automation for {{ row_count }} contact{{ "s" if row_count != 1 else "" }} now?')) return;
+      fetch('{{ url_for("salesloft_confirm_and_run") }}', { method: 'POST' })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) { alert(result.data.error || 'Could not start the automation.'); return; }
+          salesloftJobId = result.data.job_id;
+          document.getElementById('salesloft-log-panel').style.display = 'block';
+          document.getElementById('salesloft-log-output').textContent = '';
+          setSalesloftStatus('running');
+          pollSalesloft();
+        })
+        .catch(function () { alert('Could not reach the server.'); });
+    }
+
+    function setSalesloftStatus(status) {
+      const badge = document.getElementById('salesloft-status');
+      badge.textContent = status;
+      badge.className = 'script-status-badge status-' + status;
+    }
+
+    function sendSalesloftSignal(text) {
+      if (!salesloftJobId) return;
+      fetch('/salesloft/continue/' + salesloftJobId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text }),
+      }).catch(function () { alert('Could not send the signal.'); });
+    }
+
+    function pollSalesloft() {
+      if (salesloftPollTimer) clearInterval(salesloftPollTimer);
+      salesloftPollTimer = setInterval(function () {
+        fetch('/salesloft/status/' + salesloftJobId)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.error) { clearInterval(salesloftPollTimer); return; }
+            const out = document.getElementById('salesloft-log-output');
+            const wasAtBottom = (out.scrollHeight - out.scrollTop - out.clientHeight) < 30;
+            out.textContent = data.log.join('\n');
+            if (wasAtBottom) out.scrollTop = out.scrollHeight;
+            setSalesloftStatus(data.status);
+            if (data.status === 'done' || data.status === 'error') {
+              clearInterval(salesloftPollTimer);
+            }
+          })
+          .catch(function () { clearInterval(salesloftPollTimer); });
+      }, 1500);
+    }
+
+    // ── Schedule-all job now lives on its own page: see
+    // salesloft_schedule_preview.html, reached via the "Schedule all"
+    // link above.
+
+    document.querySelectorAll('#salesloft-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        const newValue = cell.textContent;
+        if (newValue === originalValue) return;
+        const tr = cell.closest('tr');
+        const rowIndex = tr.dataset.row;
+        const column = cell.dataset.col;
+        fetch('{{ url_for("salesloft_preview_update_cell") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ row: rowIndex, column: column, value: newValue }),
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('save failed');
+            cell.classList.add('saved-flash');
+            setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+          })
+          .catch(function () {
+            cell.textContent = originalValue;
+            alert('Could not save that edit — reverted.');
+          });
+      });
+    });
+  </script>
+</body>
+</html>

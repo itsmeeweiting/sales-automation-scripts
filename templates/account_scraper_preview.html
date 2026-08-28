@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account scrape results — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Scoped additions for inline research-generate + phone/email source
+       picking -- namespaced under .finisher- so nothing here collides
+       with style.css, and theme-neutral (currentColor/transparent) so
+       it fits whatever base colors this page already has. */
+    .finisher-tools{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+    .finisher-gen-btn{font-size:11px;padding:2px 6px;line-height:1.4;cursor:pointer;border-radius:4px;border:1px solid currentColor;background:transparent;opacity:.75;}
+    .finisher-gen-btn:hover{opacity:1;}
+    .finisher-picker{display:flex;gap:4px;align-items:center;}
+    .finisher-picker select{font-size:11px;padding:1px 2px;max-width:88px;border-radius:4px;border:1px solid currentColor;background:transparent;opacity:.85;}
+    .finisher-picker button{font-size:11px;padding:1px 6px;cursor:pointer;border-radius:4px;border:1px solid currentColor;background:transparent;opacity:.75;}
+    .finisher-picker button:hover{opacity:1;}
+
+    /* Sticky header, resizable columns, and compact/expand-on-edit rows --
+       same conventions as the /tools/preview page. */
+    #account-staging-table{border-collapse:collapse;table-layout:fixed;}
+    #account-staging-table thead th{position:sticky;top:0;z-index:2;background:var(--surface,#fff);box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;}
+    .cell-content{max-height:22px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:max-height .1s ease;}
+    .cell-content:focus{max-height:220px;overflow:auto;white-space:pre-wrap;line-height:1.4;outline:2px solid rgba(16,185,129,.5);outline-offset:-1px;}
+    .col-resize-handle{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;user-select:none;touch-action:none;}
+    .col-resize-handle::after{content:'';position:absolute;top:0;right:3px;width:2px;height:100%;background:currentColor;opacity:.25;}
+    .col-resize-handle:hover::after,.col-resize-handle.resizing::after{opacity:.7;}
+
+    .search-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 24px 0;flex-wrap:wrap;}
+    .search-row input[type=search]{font-family:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;opacity:.9;width:240px;}
+    .mass-update-bar{display:flex;align-items:center;gap:10px;margin:10px 24px 0;padding:9px 14px;border-radius:8px;border:1px dashed currentColor;font-size:13px;flex-wrap:wrap;}
+    .mass-update-bar select,.mass-update-bar input[type=text]{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:6px;border:1px solid currentColor;background:transparent;}
+    .mass-update-bar select{max-width:220px;}
+    .mass-update-bar input[type=text]{flex:1;min-width:160px;}
+    .mass-update-bar button{font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid currentColor;background:transparent;cursor:pointer;font-weight:600;white-space:nowrap;}
+    .mass-update-bar button:hover{opacity:.8;}
+    .mass-update-bar button:disabled{opacity:.5;cursor:default;}
+    .mass-update-bar button.danger{color:#dc2626;border-color:#dc2626;}
+    .mass-update-bar button.danger:hover{background:rgba(220,38,38,.1);}
+    .mass-update-bar .scope-hint{opacity:.65;font-size:12px;white-space:nowrap;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Account scrape results (staging)</h1>
+        <p>{{ row_count }} row{{ 's' if row_count != 1 else '' }} · not yet added to the master tracker · click any cell to edit</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('account_scraper_page') }}">← Back</a>
+        {% if 'Interest / Role Research' in headers %}
+        <button type="button" class="btn-toggle" id="gen-all-research-btn">↻ Generate all research</button>
+        {% endif %}
+        <a class="btn-toggle" href="{{ url_for('contact_select_page', source='account_staging') }}">Phone / Email Select →</a>
+        <a class="btn-toggle" href="{{ url_for('account_scraper_preview_export') }}">Export CSV</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    The original raw scrape file is untouched on disk in <code>scraper_workspace/</code> — edits and deletes here only affect this staging copy.
+  </div>
+
+  <div class="banner-info" style="margin: 8px 24px 0;">
+    Confirming below adds these rows to the master tracker <strong>and</strong> stages them as a fresh Glean Message Enhance batch — you'll land on that review screen next. This overwrites any Glean batch currently staged there.
+  </div>
+
+  <div class="search-row">
+    <input type="search" id="searchBox" placeholder="Search any column…">
+    <span id="rowCountLabel"></span>
+  </div>
+
+  {% if headers %}
+  <div class="mass-update-bar">
+    <label>Column:
+      <select id="massColumn">
+        {% for h in headers %}
+        <option value="{{ h }}">{{ h }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="text" id="massValue" placeholder="Value to set, e.g. Indonesia">
+    <button type="button" id="massApplyBtn">Apply to all rows</button>
+    <span class="scope-hint" id="massScopeHint"></span>
+    <button type="button" id="massDeleteBtn" class="danger" style="margin-left:auto;">Delete these rows</button>
+  </div>
+  {% endif %}
+
+  <details class="add-contact" style="margin: 14px 24px 0;">
+    <summary>+ Add row manually</summary>
+    <form method="post" action="{{ url_for('account_scraper_preview_add') }}">
+      <div class="add-grid">
+        {% for h in (headers if headers else tracker_headers) %}
+        <label>
+          {{ h }}
+          <input type="text" name="{{ h }}">
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit">Add row</button>
+    </form>
+  </details>
+
+  {% if headers %}
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="account-staging-table">
+      <thead>
+        <tr>
+          <th class="actions-col"></th>
+          {% for h in headers %}
+          <th data-col="{{ h }}" style="width: 160px; max-width: 160px;">{{ h }}<span class="col-resize-handle" title="Drag to resize"></span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}" data-search="{{ (row.values() | map('default', '', true) | join(' '))|lower }}">
+          <td class="actions-col">
+            <form method="post" action="{{ url_for('account_scraper_preview_delete_row') }}" onsubmit="return confirm('Delete this row from the staging preview?');">
+              <input type="hidden" name="row" value="{{ row_idx }}">
+              <button type="submit" class="btn-delete" title="Delete this row">🗑</button>
+            </form>
+          </td>
+          {% for h in headers %}
+          {% set val = row.get(h, '') %}
+          <td>
+            <div class="cell-content" contenteditable="true" data-col="{{ h }}" style="width: 100%; max-width: 160px;">{{ val }}</div>
+            {% if h == 'Interest / Role Research' %}
+            <div class="finisher-tools">
+              <button type="button" class="finisher-gen-btn gen-research-btn" title="Rebuild from About / Experience Description / Latest Post">↻ Generate</button>
+            </div>
+            {% elif h == 'Phone' and phone_source_cols %}
+            <div class="finisher-tools">
+              <div class="finisher-picker">
+                <select class="src-select">
+                  <option value="">Use…</option>
+                  {% for col in phone_source_cols %}
+                  <option value="{{ col }}">{{ col.split(' ')[0] }}</option>
+                  {% endfor %}
+                </select>
+                <button type="button" class="apply-source-btn" data-target="Phone" title="Copy the selected source into Phone">→</button>
+              </div>
+            </div>
+            {% elif h == 'Email' and email_source_cols %}
+            <div class="finisher-tools">
+              <div class="finisher-picker">
+                <select class="src-select">
+                  <option value="">Use…</option>
+                  {% for col in email_source_cols %}
+                  <option value="{{ col }}">{{ col.split(' ')[0] }}</option>
+                  {% endfor %}
+                </select>
+                <button type="button" class="apply-source-btn" data-target="Email" title="Copy the selected source into Email">→</button>
+              </div>
+            </div>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="{{ headers|length + 1 }}" class="empty-row">No rows to review.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin: 16px 24px;">
+    <form method="post" action="{{ url_for('account_scraper_preview_commit') }}" onsubmit="return confirm('Add all {{ row_count }} rows to the master PG Tracker and stage them for Glean Message Enhance? This cannot be undone.');">
+      <button type="submit" class="btn-export" style="border:none;">Confirm &amp; add {{ row_count }} rows to master tracker →  Glean</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="empty">No staged scrape results yet. Run the scraper first.</p>
+  {% endif %}
+
+  <script>
+    function saveCell(cell, revertValue) {
+      const tr = cell.closest('tr');
+      const rowIndex = tr.dataset.row;
+      const column = cell.dataset.col;
+      return fetch('{{ url_for("account_scraper_preview_update_cell") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ row: rowIndex, column: column, value: cell.textContent }),
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('save failed');
+          cell.classList.add('saved-flash');
+          setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+        })
+        .catch(function () {
+          if (revertValue !== undefined) cell.textContent = revertValue;
+          alert('Could not save that edit — reverted.');
+        });
+    }
+
+    document.querySelectorAll('#account-staging-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        if (cell.textContent === originalValue) return;
+        saveCell(cell, originalValue);
+        originalValue = cell.textContent;
+      });
+    });
+
+    function generateResearchForRow(tr) {
+      const get = function (col) {
+        const cell = tr.querySelector('.cell-content[data-col="' + col + '"]');
+        return cell ? cell.textContent.trim() : '';
+      };
+      const cell = tr.querySelector('.cell-content[data-col="Interest / Role Research"]');
+      if (!cell) return Promise.resolve();
+      cell.textContent = 'About: ' + get('About') + ', Experience Description: ' + get('Experience Description') + ', Latest Post: ' + get('Latest Post');
+      return saveCell(cell);
+    }
+
+    document.querySelectorAll('#account-staging-table .gen-research-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        generateResearchForRow(btn.closest('tr'));
+      });
+    });
+
+    document.getElementById('gen-all-research-btn')?.addEventListener('click', function () {
+      const rowCount = document.querySelectorAll('#account-staging-table tbody tr[data-row]').length;
+      if (!confirm('Generate Interest / Role Research for all ' + rowCount + ' rows? This overwrites any existing text in that column.')) return;
+      document.querySelectorAll('#account-staging-table tbody tr[data-row]').forEach(function (tr) {
+        generateResearchForRow(tr);
+      });
+    });
+
+    document.querySelectorAll('#account-staging-table .apply-source-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const tr = btn.closest('tr');
+        const picker = btn.closest('.finisher-picker');
+        const select = picker.querySelector('.src-select');
+        const sourceCol = select.value;
+        if (!sourceCol) return;
+        const sourceCell = tr.querySelector('.cell-content[data-col="' + sourceCol + '"]');
+        const targetCell = tr.querySelector('.cell-content[data-col="' + btn.dataset.target + '"]');
+        if (!sourceCell || !targetCell) return;
+        if (!sourceCell.textContent.trim()) { alert(sourceCol + ' is empty for this row.'); return; }
+        targetCell.textContent = sourceCell.textContent;
+        saveCell(targetCell);
+        select.value = '';
+      });
+    });
+    // -- Resizable columns: drag the handle on a header cell's right edge.
+    //    Widths persist per column in localStorage so they stick across
+    //    reloads (table-layout:fixed means a th's own width drives the
+    //    whole column, no colgroup needed). --------------------------------
+
+    (function () {
+      const table = document.getElementById('account-staging-table');
+      if (!table) return;
+
+      function storageKey(col) { return 'accountStagingColWidth:' + col; }
+
+      table.querySelectorAll('th[data-col]').forEach(function (th) {
+        const saved = localStorage.getItem(storageKey(th.dataset.col));
+        if (saved) th.style.width = saved + 'px';
+      });
+
+      let active = null, startX = 0, startWidth = 0;
+
+      table.querySelectorAll('.col-resize-handle').forEach(function (handle) {
+        handle.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          active = handle.closest('th');
+          startX = e.clientX;
+          startWidth = active.offsetWidth;
+          handle.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+        });
+        handle.addEventListener('dblclick', function () {
+          const th = handle.closest('th');
+          th.style.width = '160px';
+          localStorage.removeItem(storageKey(th.dataset.col));
+        });
+      });
+
+      document.addEventListener('mousemove', function (e) {
+        if (!active) return;
+        active.style.width = Math.max(60, startWidth + (e.clientX - startX)) + 'px';
+      });
+
+      document.addEventListener('mouseup', function () {
+        if (!active) return;
+        localStorage.setItem(storageKey(active.dataset.col), parseInt(active.style.width, 10));
+        table.querySelectorAll('.col-resize-handle.resizing').forEach(function (h) { h.classList.remove('resizing'); });
+        document.body.style.cursor = '';
+        active = null;
+      });
+    })();
+
+    // -- Search filter, scoped to this table's rows -----------------------
+
+    function visibleAccountStagingRows() {
+      return Array.from(document.querySelectorAll('#account-staging-table tbody tr[data-row]'))
+        .filter(function (tr) { return tr.style.display !== 'none'; });
+    }
+
+    function updateMassScopeHint() {
+      const hint = document.getElementById('massScopeHint');
+      if (!hint) return;
+      const n = visibleAccountStagingRows().length;
+      hint.textContent = 'will update ' + n + ' row' + (n === 1 ? '' : 's');
+    }
+
+    const searchBox = document.getElementById('searchBox');
+    if (searchBox) {
+      searchBox.addEventListener('input', function (e) {
+        const q = e.target.value.trim().toLowerCase();
+        let visible = 0;
+        document.querySelectorAll('#account-staging-table tbody tr[data-row]').forEach(function (tr) {
+          const match = !q || (tr.dataset.search || '').includes(q);
+          tr.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        document.getElementById('rowCountLabel').textContent = q ? (visible + ' matching') : '';
+        updateMassScopeHint();
+      });
+    }
+
+    // -- Mass update: set one column to one value across every row that's
+    //    currently visible (search first to target a subset). -------------
+
+    const massApplyBtn = document.getElementById('massApplyBtn');
+    if (massApplyBtn) {
+      updateMassScopeHint();
+      massApplyBtn.addEventListener('click', function () {
+        const column = document.getElementById('massColumn').value;
+        const value = document.getElementById('massValue').value;
+        const rows = visibleAccountStagingRows();
+        if (!rows.length) { alert('No rows to update.'); return; }
+        if (!confirm('Set "' + column + '" to "' + value + '" for ' + rows.length + ' row(s)? This overwrites whatever is there now and can\'t be undone.')) return;
+
+        const rowIndices = rows.map(function (tr) { return Number(tr.dataset.row); });
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Applying…';
+        fetch('/tools/preview/fill_column', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'account_staging', column: column, value: value, rows: rowIndices }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'update failed'); });
+            return res.json();
+          })
+          .then(function () {
+            rows.forEach(function (tr) {
+              const cell = tr.querySelector('.cell-content[data-col="' + CSS.escape(column) + '"]');
+              if (cell) {
+                cell.textContent = value;
+                cell.classList.add('saved-flash');
+                setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+              }
+            });
+          })
+          .catch(function (err) {
+            alert('Mass update failed — nothing was changed. ' + (err.message || ''));
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Apply to all rows';
+          });
+      });
+    }
+
+    // -- Bulk delete: removes whatever's currently visible (search-scoped),
+    //    same endpoint as the per-row 🗑 button uses under the hood. -------
+
+    const massDeleteBtn = document.getElementById('massDeleteBtn');
+    if (massDeleteBtn) {
+      massDeleteBtn.addEventListener('click', function () {
+        const rows = visibleAccountStagingRows();
+        if (!rows.length) { alert('No rows to delete.'); return; }
+        if (!confirm('Delete ' + rows.length + ' row(s)? This cannot be undone.')) return;
+        const rowIndices = rows.map(function (tr) { return Number(tr.dataset.row); });
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+        fetch('/tools/preview/delete_rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'account_staging', rows: rowIndices }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'delete failed'); });
+            return res.json();
+          })
+          .then(function () { location.reload(); })
+          .catch(function (err) {
+            alert('Delete failed — nothing was removed. ' + (err.message || ''));
+            btn.disabled = false;
+            btn.textContent = 'Delete these rows';
+          });
+      });
+    }
+  </script>
+</body>
+</html>

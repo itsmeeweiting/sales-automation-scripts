@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Preview — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Scoped, theme-neutral additions -- same convention as contact_select.html */
+    .preview-table-wrap{overflow-x:auto;}
+    #preview-table{border-collapse:collapse;table-layout:fixed;}
+    #preview-table th{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:sticky;top:0;z-index:2;box-sizing:border-box;padding-right:14px;background:var(--surface,#fff);}
+    #preview-table td{box-sizing:border-box;}
+    .preview-cell{
+      width:100%;
+      max-height:22px;
+      line-height:22px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-family:'IBM Plex Mono',monospace;
+      font-size:12px;
+      padding:2px 6px;
+      border-radius:3px;
+      transition:max-height .1s ease;
+    }
+    .preview-cell:focus{
+      max-height:220px;
+      overflow:auto;
+      white-space:pre-wrap;
+      line-height:1.4;
+      outline:2px solid rgba(16,185,129,.5);
+      outline-offset:-1px;
+    }
+    #preview-table td{padding:0;vertical-align:top;}
+    .row-num{opacity:.5;font-family:'IBM Plex Mono',monospace;font-size:11px;text-align:right;width:44px;padding:2px 6px !important;line-height:22px;}
+    .row-del{width:32px;text-align:center;padding:2px !important;}
+    .row-delete-btn{width:20px;height:20px;line-height:18px;text-align:center;border-radius:5px;border:1px solid currentColor;background:transparent;opacity:.5;cursor:pointer;font-size:13px;padding:0;}
+    .row-delete-btn:hover{opacity:1;color:#dc2626;border-color:#dc2626;}
+    .row-delete-btn:disabled{opacity:.3;cursor:default;}
+    /* Drag handle on the right edge of each header cell -- vertical bar
+       widens on hover/drag so it's an easy target without eating into
+       the column's own width. */
+    .col-resize-handle{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;user-select:none;touch-action:none;}
+    .col-resize-handle::after{content:'';position:absolute;top:0;right:3px;width:2px;height:100%;background:currentColor;opacity:.25;}
+    .col-resize-handle:hover::after,.col-resize-handle.resizing::after{opacity:.7;}
+    .search-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 24px 0;flex-wrap:wrap;}
+    .search-row input[type=search]{font-family:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;opacity:.9;width:240px;}
+    .mass-update-bar{display:flex;align-items:center;gap:10px;margin:10px 24px 0;padding:9px 14px;border-radius:8px;border:1px dashed currentColor;font-size:13px;flex-wrap:wrap;}
+    .mass-update-bar select,.mass-update-bar input[type=text]{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:6px;border:1px solid currentColor;background:transparent;}
+    .mass-update-bar select{max-width:220px;}
+    .mass-update-bar input[type=text]{flex:1;min-width:160px;}
+    .mass-update-bar button{font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid currentColor;background:transparent;cursor:pointer;font-weight:600;white-space:nowrap;}
+    .mass-update-bar button:hover{opacity:.8;}
+    .mass-update-bar button:disabled{opacity:.5;cursor:default;}
+    .mass-update-bar button.danger{color:#dc2626;border-color:#dc2626;}
+    .mass-update-bar button.danger:hover{background:rgba(220,38,38,.1);}
+    .mass-update-bar .scope-hint{opacity:.65;font-size:12px;white-space:nowrap;}
+    #sourceSwitch{font-family:inherit;font-size:13px;padding:3px 6px;border-radius:6px;border:1px solid currentColor;background:transparent;color:inherit;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Contact Preview</h1>
+        <p>
+          <label style="display:inline-flex;align-items:center;gap:6px;">
+            Source:
+            <select id="sourceSwitch">
+              <option value="account_staging" {{ 'selected' if source == 'account_staging' else '' }}>{{ source_labels.account_staging }}</option>
+              <option value="tracker" {{ 'selected' if source == 'tracker' else '' }}>{{ source_labels.tracker }}</option>
+              <option value="upload" {{ 'selected' if source == 'upload' else '' }}>{{ source_labels.upload }}</option>
+            </select>
+          </label>
+          · {{ row_count }} row{{ 's' if row_count != 1 else '' }} · click any cell to edit it directly — saves immediately, same as the other tools
+        </p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('tools_landing') }}">← Tools</a>
+        <a class="btn-toggle" href="{{ url_for('research_builder_page', source=source) }}">Research Builder →</a>
+        <a class="btn-toggle" href="{{ url_for('contact_select_page', source=source) }}">Phone / Email Select →</a>
+        <form method="post" action="{{ url_for('tools_preview_send_to_glean') }}" style="display:inline;" onsubmit="return confirm('Stage these {{ row_count }} row(s) as a fresh Glean Message Enhance batch? This overwrites any unreviewed batch already staged there.');">
+          <input type="hidden" name="source" value="{{ source }}">
+          <button type="submit" class="btn-toggle">Glean Message Enhance →</button>
+        </form>
+        <a class="btn-toggle" href="{{ url_for('tools_preview_export', source=source) }}">Export CSV</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    This is a raw view of every column in the file, so you can fix anything that looks off before specializing. Use the bar below to set one column to one value across every row shown (search first to target a subset). Edits here save straight to this source's file — move into Research Builder, Phone / Email Select, or Glean Message Enhance whenever you're ready to work through the rest of the rows with those tools.
+  </div>
+
+  {% if sync_info %}
+  <div class="banner-info" style="margin: 8px 24px 0; opacity:.8;">
+    ↻ Synced from <code>{{ sync_info.output_file }}</code> · {{ sync_info.synced_at.replace('T', ' ') }}
+  </div>
+  {% endif %}
+
+  <div class="search-row">
+    <input type="search" id="searchBox" placeholder="Search any column…">
+    <span id="rowCountLabel"></span>
+  </div>
+
+  {% if headers and rows %}
+  <div class="mass-update-bar">
+    <label>Column:
+      <select id="massColumn">
+        {% for col in headers %}
+        <option value="{{ col }}">{{ col }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="text" id="massValue" placeholder="Value to set, e.g. Indonesia">
+    <button type="button" id="massApplyBtn">Apply to all rows</button>
+    <span class="scope-hint" id="massScopeHint"></span>
+    <button type="button" id="massDeleteBtn" class="danger" style="margin-left:auto;">Delete these rows</button>
+  </div>
+  {% endif %}
+
+  {% if headers %}
+  <div class="table-wrap preview-table-wrap" style="margin: 16px 24px;">
+    <table id="preview-table">
+      <thead>
+        <tr>
+          <th class="row-del"></th>
+          <th class="row-num">#</th>
+          {% for col in headers %}
+          <th data-col="{{ col }}" style="width:160px;">{{ col }}<span class="col-resize-handle" title="Drag to resize"></span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}" data-search="{{ (row.values() | map('default', '', true) | join(' '))|lower }}">
+          <td class="row-del"><button type="button" class="row-delete-btn" data-row="{{ row_idx }}" title="Delete this row">×</button></td>
+          <td class="row-num">{{ row_idx + 1 }}</td>
+          {% for col in headers %}
+          <td><div class="preview-cell" contenteditable="true" data-col="{{ col }}">{{ row.get(col, '') }}</div></td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="{{ (headers|length) + 2 }}" class="empty-row">No rows in this file.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin: 16px 24px;">
+    {% if source != 'tracker' %}
+    <form method="post" action="{{ url_for('tools_commit_to_tracker') }}" onsubmit="return confirm('Append these {{ row_count }} rows into the live tracker.csv?');" style="display:inline;">
+      <input type="hidden" name="source" value="{{ source }}">
+      <button type="submit" class="btn-export" style="border:none;">Commit to tracker</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="empty" style="margin: 16px 24px;">No rows in this file.</p>
+  {% endif %}
+
+  <script>
+    const SOURCE = {{ source|tojson }};
+
+    document.getElementById('sourceSwitch').addEventListener('change', function () {
+      window.location.href = "{{ url_for('tools_preview_page') }}?source=" + encodeURIComponent(this.value);
+    });
+
+    function saveCell(cell, revertValue) {
+      const tr = cell.closest('tr');
+      const row = tr.dataset.row;
+      const column = cell.dataset.col;
+      return fetch("{{ url_for('tools_preview_update_cell') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE, row: row, column: column, value: cell.textContent }),
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('save failed');
+          cell.classList.add('saved-flash');
+          setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+        })
+        .catch(function () {
+          if (revertValue !== undefined) cell.textContent = revertValue;
+          alert('Could not save that edit — reverted.');
+        });
+    }
+
+    document.querySelectorAll('#preview-table .preview-cell[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        if (cell.textContent === originalValue) return;
+        saveCell(cell, originalValue);
+        originalValue = cell.textContent;
+      });
+    });
+
+    // -- Resizable columns: drag the handle on a header cell's right edge.
+    //    Widths persist per source+column in localStorage so they stick
+    //    across reloads (table-layout:fixed means a th's own width drives
+    //    the whole column, no colgroup needed). --------------------------
+
+    (function () {
+      const table = document.getElementById('preview-table');
+      if (!table) return;
+
+      function storageKey(col) {
+        return 'toolsPreviewColWidth:' + SOURCE + ':' + col;
+      }
+
+      table.querySelectorAll('th[data-col]').forEach(function (th) {
+        const saved = localStorage.getItem(storageKey(th.dataset.col));
+        if (saved) th.style.width = saved + 'px';
+      });
+
+      let active = null;
+      let startX = 0;
+      let startWidth = 0;
+
+      table.querySelectorAll('.col-resize-handle').forEach(function (handle) {
+        handle.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          active = handle.closest('th');
+          startX = e.clientX;
+          startWidth = active.offsetWidth;
+          handle.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+        });
+      });
+
+      document.addEventListener('mousemove', function (e) {
+        if (!active) return;
+        const newWidth = Math.max(60, startWidth + (e.clientX - startX));
+        active.style.width = newWidth + 'px';
+      });
+
+      document.addEventListener('mouseup', function () {
+        if (!active) return;
+        localStorage.setItem(storageKey(active.dataset.col), parseInt(active.style.width, 10));
+        table.querySelectorAll('.col-resize-handle.resizing').forEach(function (h) { h.classList.remove('resizing'); });
+        document.body.style.cursor = '';
+        active = null;
+      });
+
+      // Double-click a handle to snap that column back to the default width.
+      table.querySelectorAll('.col-resize-handle').forEach(function (handle) {
+        handle.addEventListener('dblclick', function () {
+          const th = handle.closest('th');
+          th.style.width = '160px';
+          localStorage.removeItem(storageKey(th.dataset.col));
+        });
+      });
+    })();
+
+    // -- Mass update: set one column to one value across every row that's
+    //    currently visible (i.e. respects the search filter above -- with
+    //    no search text that's every row in the file). ---------------------
+
+    function visibleRows() {
+      return Array.from(document.querySelectorAll('#preview-table tbody tr[data-row]'))
+        .filter(function (tr) { return tr.style.display !== 'none'; });
+    }
+
+    function updateMassScopeHint() {
+      const hint = document.getElementById('massScopeHint');
+      if (!hint) return;
+      const n = visibleRows().length;
+      hint.textContent = 'will update ' + n + ' row' + (n === 1 ? '' : 's');
+    }
+
+    const massApplyBtn = document.getElementById('massApplyBtn');
+    if (massApplyBtn) {
+      updateMassScopeHint();
+      massApplyBtn.addEventListener('click', function () {
+        const column = document.getElementById('massColumn').value;
+        const value = document.getElementById('massValue').value;
+        const rows = visibleRows();
+        if (!rows.length) { alert('No rows to update.'); return; }
+        if (!confirm('Set "' + column + '" to "' + value + '" for ' + rows.length + ' row(s)? This overwrites whatever is there now and can\'t be undone.')) return;
+
+        const rowIndices = rows.map(function (tr) { return Number(tr.dataset.row); });
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Applying…';
+        fetch("{{ url_for('tools_preview_fill_column') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: SOURCE, column: column, value: value, rows: rowIndices }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'update failed'); });
+            return res.json();
+          })
+          .then(function () {
+            rows.forEach(function (tr) {
+              const cell = tr.querySelector('.preview-cell[data-col="' + CSS.escape(column) + '"]');
+              if (cell) {
+                cell.textContent = value;
+                cell.classList.add('saved-flash');
+                setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+              }
+            });
+          })
+          .catch(function (err) {
+            alert('Mass update failed — nothing was changed. ' + (err.message || ''));
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Apply to all rows';
+          });
+      });
+    }
+
+    // -- Delete rows: per-row × button, or the bulk "Delete these rows"
+    //    button which -- like mass update -- acts on whatever's currently
+    //    visible under the search filter. Both reload the page on success
+    //    since row indices are file-order based and shift after a delete. -
+
+    function deleteRows(rowIndices, trigger) {
+      if (!rowIndices.length) return;
+      fetch("{{ url_for('tools_preview_delete_rows') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE, rows: rowIndices }),
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'delete failed'); });
+          return res.json();
+        })
+        .then(function () {
+          location.reload();
+        })
+        .catch(function (err) {
+          if (trigger) trigger.disabled = false;
+          alert('Delete failed — nothing was removed. ' + (err.message || ''));
+        });
+    }
+
+    document.querySelectorAll('.row-delete-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Delete row ' + (Number(btn.dataset.row) + 1) + '? This cannot be undone.')) return;
+        btn.disabled = true;
+        deleteRows([Number(btn.dataset.row)], btn);
+      });
+    });
+
+    const massDeleteBtn = document.getElementById('massDeleteBtn');
+    if (massDeleteBtn) {
+      massDeleteBtn.addEventListener('click', function () {
+        const rows = visibleRows();
+        if (!rows.length) { alert('No rows to delete.'); return; }
+        if (!confirm('Delete ' + rows.length + ' row(s)? This cannot be undone.')) return;
+        const rowIndices = rows.map(function (tr) { return Number(tr.dataset.row); });
+        this.disabled = true;
+        this.textContent = 'Deleting…';
+        deleteRows(rowIndices, this);
+      });
+    }
+
+    document.getElementById('searchBox').addEventListener('input', function (e) {
+      const q = e.target.value.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll('#preview-table tbody tr[data-row]').forEach(function (tr) {
+        const match = !q || tr.dataset.search.includes(q);
+        tr.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      document.getElementById('rowCountLabel').textContent = q ? (visible + ' matching') : '';
+      updateMassScopeHint();
+    });
+  </script>
+</body>
+</html>

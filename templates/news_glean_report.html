@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>News Signal Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.5; }
+  a.back { font-size: 13px; color: #00684A; text-decoration: none; }
+  h1 { font-size: 20px; }
+  .report-box { border: 1px solid #ddd; border-radius: 8px; padding: 24px; margin-top: 16px; white-space: pre-wrap; font-size: 14px; }
+  .actions { margin: 14px 0; }
+  .actions a { font-size: 13px; color: #00684A; text-decoration: none; margin-right: 16px; }
+  .empty { color: #888; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<a class="back" href="{{ url_for('news_page') }}">&larr; back to News Scraper</a>
+<h1>News Signal Report</h1>
+
+<div class="actions">
+  <a href="{{ url_for('news_glean_report_download') }}">Download summary (.md)</a>
+  {% if has_workbook %}
+  <a href="{{ url_for('news_glean_report_download_workbook') }}" style="font-weight:600;">Download workbook (.xlsx)</a>
+  {% endif %}
+</div>
+
+{% if has_workbook %}
+<div style="background:#e6f4ea; border:1px solid #b7dfc3; border-radius:6px; padding:12px 16px; margin-bottom:16px; font-size:13.5px;">
+  Glean returned a full workbook for this run (prioritized signals, excluded false positives, and recommendations on separate tabs) — download it above for the complete breakdown. The text below is just the narration/summary that came alongside it.
+</div>
+{% endif %}
+
+{% if report_text %}
+<div class="report-box">{{ report_text }}</div>
+{% else %}
+<p class="empty">No report generated yet. Go to a news preview page, select rows, and click "Send to Glean Report."</p>
+{% endif %}
+
+</body>
+</html>

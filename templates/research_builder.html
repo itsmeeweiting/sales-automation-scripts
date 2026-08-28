@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Builder — PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Scoped, theme-neutral -- only styles elements that don't exist
+       elsewhere in style.css, so nothing here can collide. */
+    .cell-readonly{width:100%;max-width:160px;white-space:pre-wrap;word-break:break-word;opacity:.85;}
+    .search-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 24px 0;flex-wrap:wrap;}
+    .search-row input[type=search]{font-family:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;opacity:.9;width:240px;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Research Builder</h1>
+        <p>Source: {{ source_label }} · {{ row_count }} row{{ 's' if row_count != 1 else '' }} · concatenates About, Experience Description and Latest Post into Interest / Role Research</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn-toggle" href="{{ url_for('tools_landing') }}">← Tools</a>
+        <a class="btn-toggle" href="{{ url_for('contact_select_page', source=source) }}">Phone / Email Select →</a>
+        <button type="button" class="btn-toggle" id="gen-all-btn">↻ Generate all</button>
+        <a class="btn-toggle" href="{{ url_for('research_builder_export', source=source) }}">Export CSV</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner-info" style="margin: 14px 24px 0;">
+    Every generate or edit here writes straight back to {{ source_label }} — there's no separate save step.
+  </div>
+
+  <div class="search-row">
+    <input type="search" id="searchBox" placeholder="Search company or contact…">
+    <span id="rowCountLabel"></span>
+  </div>
+
+  {% if headers %}
+  <div class="table-wrap" style="margin: 16px 24px;">
+    <table id="research-table">
+      <thead>
+        <tr>
+          <th class="actions-col"></th>
+          <th style="width:160px;">Company Name</th>
+          <th style="width:160px;">Contact Name</th>
+          <th style="width:160px;">About</th>
+          <th style="width:160px;">Experience Description</th>
+          <th style="width:160px;">Latest Post</th>
+          <th style="width:220px;">Interest / Role Research</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set row_idx = loop.index0 %}
+        <tr data-row="{{ row_idx }}" data-company="{{ (row.get('Company Name','') or '')|lower }}" data-contact="{{ (row.get('Contact Name','') or '')|lower }}">
+          <td class="actions-col">
+            <button type="button" class="btn-delete gen-row-btn" title="Rebuild this row's research">↻</button>
+          </td>
+          <td><div class="cell-readonly">{{ row.get('Company Name','') }}</div></td>
+          <td>
+            <div class="cell-readonly">
+              {{ row.get('Contact Name','') }}
+              {% if row.get('LinkedIn Profile') %}<a class="open-link" href="{{ row.get('LinkedIn Profile') }}" target="_blank" rel="noopener" title="Open profile">↗</a>{% endif %}
+            </div>
+          </td>
+          <td><div class="cell-readonly" data-col="About">{{ row.get('About','') }}</div></td>
+          <td><div class="cell-readonly" data-col="Experience Description">{{ row.get('Experience Description','') }}</div></td>
+          <td><div class="cell-readonly" data-col="Latest Post">{{ row.get('Latest Post','') }}</div></td>
+          <td>
+            <div class="cell-content" contenteditable="true" data-col="Interest / Role Research" style="width:100%;max-width:220px;">{{ row.get('Interest / Role Research','') }}</div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="7" class="empty-row">No rows in this source yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin: 16px 24px;">
+    {% if source != 'tracker' %}
+    <form method="post" action="{{ url_for('tools_commit_to_tracker') }}" onsubmit="return confirm('Append these {{ row_count }} rows into the live tracker.csv?');" style="display:inline;">
+      <input type="hidden" name="source" value="{{ source }}">
+      <button type="submit" class="btn-export" style="border:none;">Commit to tracker</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="empty" style="margin: 16px 24px;">No rows in this source yet.</p>
+  {% endif %}
+
+  <script>
+    const SOURCE = {{ source|tojson }};
+
+    function saveResearchCell(cell, revertValue) {
+      const tr = cell.closest('tr');
+      return fetch("{{ url_for('research_builder_update_cell') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE, row: tr.dataset.row, value: cell.textContent }),
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('save failed');
+          cell.classList.add('saved-flash');
+          setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+        })
+        .catch(function () {
+          if (revertValue !== undefined) cell.textContent = revertValue;
+          alert('Could not save that edit — reverted.');
+        });
+    }
+
+    document.querySelectorAll('#research-table .cell-content[contenteditable]').forEach(function (cell) {
+      let originalValue = cell.textContent;
+      cell.addEventListener('focus', function () { originalValue = cell.textContent; });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); cell.blur(); }
+        if (e.key === 'Escape') { cell.textContent = originalValue; cell.blur(); }
+      });
+      cell.addEventListener('blur', function () {
+        if (cell.textContent === originalValue) return;
+        saveResearchCell(cell, originalValue);
+        originalValue = cell.textContent;
+      });
+    });
+
+    function generateRow(tr) {
+      const idx = tr.dataset.row;
+      return fetch("{{ url_for('research_builder_generate') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE, row: idx }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data.error) { alert(data.error); return; }
+          const cell = tr.querySelector('.cell-content[data-col="Interest / Role Research"]');
+          cell.textContent = data.value;
+          cell.classList.add('saved-flash');
+          setTimeout(function () { cell.classList.remove('saved-flash'); }, 500);
+        })
+        .catch(function () { alert('Generate failed — check the server log.'); });
+    }
+
+    document.querySelectorAll('.gen-row-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { generateRow(btn.closest('tr')); });
+    });
+
+    document.getElementById('gen-all-btn').addEventListener('click', function () {
+      const rowCount = document.querySelectorAll('#research-table tbody tr[data-row]').length;
+      if (!rowCount) return;
+      if (!confirm('Generate Interest / Role Research for all ' + rowCount + ' rows? This overwrites any existing text in that column.')) return;
+      fetch("{{ url_for('research_builder_generate') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: SOURCE }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data.error) { alert(data.error); return; }
+          location.reload();
+        })
+        .catch(function () { alert('Generate all failed — check the server log.'); });
+    });
+
+    document.getElementById('searchBox').addEventListener('input', function (e) {
+      const q = e.target.value.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll('#research-table tbody tr[data-row]').forEach(function (tr) {
+        const match = !q || tr.dataset.company.includes(q) || tr.dataset.contact.includes(q);
+        tr.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      document.getElementById('rowCountLabel').textContent = q ? (visible + ' matching') : '';
+    });
+  </script>
+</body>
+</html>

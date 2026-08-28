@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PG Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>PG Tracker</h1>
+        <p>{{ row_count }} contact{{ 's' if row_count != 1 else '' }} · {{ headers|length }} columns · a live view of where the pipeline stands</p>
+      </div>
+    </div>
+
+    <div class="nav-sections">
+      <div class="nav-section">
+        <div class="nav-section-label">General</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('import_page') }}">Import New</a>
+          <a class="btn-toggle" href="{{ url_for('news_page') }}">News Scraper</a>
+          <a class="btn-toggle" href="{{ url_for('call_dashboard') }}">Call Dashboard</a>
+          <a class="btn-toggle" href="{{ url_for('dashboard_page') }}">Tracker</a>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Sales Nav Workspace</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('scraper_page') }}">LinkedIn URL Scraper</a>
+          <a class="btn-toggle" href="{{ url_for('account_scraper_page') }}">LinkedIn Account Scrape</a>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Contact Finisher</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('tools_landing') }}">Research &amp; Contact Tools</a>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">ZoomInfo Workspace</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('intent_signal_page') }}">Intent Signal Scrap</a>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Glean Workspace</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('glean_page') }}">Glean Message Enhance</a>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Salesloft Workspace</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('salesloft_import_page') }}">Salesloft Email</a>
+          <a class="btn-toggle" href="{{ url_for('cadence_settings') }}">Manage Cadences</a>
+          <a class="btn-toggle" href="{{ url_for('live_feed_page') }}">Email Live Feed</a>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Settings</div>
+        <div class="nav-section-links">
+          <a class="btn-toggle" href="{{ url_for('library_page', name='accounts') }}">Reference Library</a>
+          <a class="btn-toggle" href="{{ url_for('settings_page') }}">AI Instructions</a>
+          <a class="btn-toggle" href="{{ url_for('validation_settings_page') }}">Data Validation</a>
+          <a class="btn-toggle" href="{{ url_for('scripts_page') }}">Scripts</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.total }}</div>
+      <div class="kpi-label">Total contacts</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.meetings_booked }}</div>
+      <div class="kpi-label">Meetings booked</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.pending_response }}</div>
+      <div class="kpi-label">Pending response</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.coffee_chats }}</div>
+      <div class="kpi-label">Potential coffee chats</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.linkedin_pct }}%</div>
+      <div class="kpi-label">Have a LinkedIn Profile</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{{ kpis.phone_pct }}%</div>
+      <div class="kpi-label">Have a real Phone number</div>
+    </div>
+  </div>
+
+  <div class="breakdown-card" style="margin: 16px 24px;">
+    <div class="breakdown-title">Needs a next step — Status = Contacted - Working or Meeting Pending TBC ({{ needs_followup|length }})</div>
+    {% if needs_followup %}
+    <div class="table-wrap">
+      <table id="followup-table">
+        <thead>
+          <tr>
+            <th>Contact Name</th>
+            <th>Company Name</th>
+            <th>Title / Role</th>
+            <th>Status</th>
+            <th>Account Executive</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in needs_followup %}
+          <tr>
+            <td>
+              {{ r.get('Contact Name', '') }}
+              {% if r.get('LinkedIn Profile') %}
+              <a class="open-link" href="{{ r.get('LinkedIn Profile') }}" target="_blank" rel="noopener" title="Open profile">↗</a>
+              {% endif %}
+            </td>
+            <td>{{ r.get('Company Name', '') }}</td>
+            <td>{{ r.get('Title / Role', '') }}</td>
+            <td>{{ r.get('Status', '') }}</td>
+            <td>{{ r.get('Account Executive', '') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">Nothing stuck here right now.</p>
+    {% endif %}
+  </div>
+
+  <div class="breakdown-grid">
+    <div class="breakdown-card">
+      <div class="breakdown-title">By Patch</div>
+      {% for item in patch_counts %}
+      <div class="breakdown-row">
+        <span class="breakdown-label">{{ item.label }}</span>
+        <div class="breakdown-bar-track"><div class="breakdown-bar" style="width: {{ item.pct }}%;"></div></div>
+        <span class="breakdown-count">{{ item.count }} ({{ item.pct }}%)</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">By Status</div>
+      {% for item in status_counts %}
+      <div class="breakdown-row">
+        <span class="breakdown-label">{{ item.label }}</span>
+        <div class="breakdown-bar-track"><div class="breakdown-bar" style="width: {{ item.pct }}%;"></div></div>
+        <span class="breakdown-count">{{ item.count }} ({{ item.pct }}%)</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">By Source / Signal</div>
+      {% for item in source_counts %}
+      <div class="breakdown-row">
+        <span class="breakdown-label">{{ item.label }}</span>
+        <div class="breakdown-bar-track"><div class="breakdown-bar" style="width: {{ item.pct }}%;"></div></div>
+        <span class="breakdown-count">{{ item.count }} ({{ item.pct }}%)</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">By Account Executive</div>
+      {% for item in ae_counts %}
+      <div class="breakdown-row">
+        <span class="breakdown-label">{{ item.label }}</span>
+        <div class="breakdown-bar-track"><div class="breakdown-bar" style="width: {{ item.pct }}%;"></div></div>
+        <span class="breakdown-count">{{ item.count }} ({{ item.pct }}%)</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">Contacts per Account</div>
+      {% for item in account_contact_counts %}
+      <div class="breakdown-row">
+        <span class="breakdown-label">{{ item.label }}</span>
+        <div class="breakdown-bar-track"><div class="breakdown-bar" style="width: {{ item.pct }}%;"></div></div>
+        <span class="breakdown-count">{{ item.count }} ({{ item.pct }}%)</span>
+      </div>
+      {% endfor %}
+      {% if not account_contact_counts %}
+      <p class="empty">No accounts yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

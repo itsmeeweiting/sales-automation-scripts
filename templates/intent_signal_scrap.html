@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intent Signal Scrap — PG Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Scoped to this page -- doesn't assume anything about style.css beyond
+       the .btn-toggle / header-row classes the rest of the app already uses. */
+    .intent-wrap { display: flex; flex-direction: column; gap: 24px; padding: 24px; max-width: 1100px; margin: 0 auto; }
+    .intent-panel { border: 1px solid #ddd; border-radius: 10px; padding: 20px 24px; }
+    .intent-panel h2 { margin-top: 0; }
+    .intent-panel p.desc { color: #555; margin-bottom: 16px; }
+    .intent-controls { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .intent-status { font-weight: 600; font-size: 14px; }
+    .intent-status[data-state="running"] { color: #b8860b; }
+    .intent-status[data-state="done"] { color: #1a7f37; }
+    .intent-status[data-state="error"] { color: #c0392b; }
+    .intent-status[data-state="stopped"] { color: #c0392b; }
+    .intent-log {
+      background: #0d1117; color: #c9d1d9; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 12.5px; line-height: 1.5; padding: 12px 14px; border-radius: 6px;
+      height: 320px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+    }
+    .intent-input-row { display: flex; gap: 8px; margin-top: 10px; }
+    .intent-input-row input[type=text] { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    .intent-hint { color: #777; font-size: 12.5px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Intent Signal Scrap</h1>
+        <p>Two ZoomInfo-driven options for pulling contacts into the tracker.</p>
+      </div>
+      <a class="btn-toggle" href="{{ url_for('index') }}">← Back to Tracker</a>
+    </div>
+  </header>
+
+  <div class="intent-wrap">
+
+    <section class="intent-panel" id="panel-contact">
+      <h2>Option 1 — ZoomInfo Contact Only</h2>
+      <p class="desc">
+        Scrapes your filtered ZoomInfo People Search results via the internal API (no clicking required).
+        Populates <strong>Patch, Company Name, Contact Name, Title / Role, LinkedIn Profile, ZoomInfo Phone, ZoomInfo Email</strong>.
+      </p>
+      <div class="intent-controls">
+        <button id="contact-run-btn" class="btn-toggle" type="button">Start</button>
+        <button id="contact-stop-btn" class="btn-toggle" type="button" disabled>Stop</button>
+        <span class="intent-status" id="contact-status" data-state="idle">Idle</span>
+        {% if contact_has_staging %}
+        <a class="btn-toggle" href="{{ url_for('intent_contact_preview') }}">Preview / Commit results →</a>
+        {% endif %}
+      </div>
+      <div class="intent-log" id="contact-log"></div>
+      <div class="intent-input-row">
+        <input type="text" id="contact-input-text" placeholder="Type a reply, or leave blank and click Send for ENTER">
+        <button id="contact-send-btn" class="btn-toggle" type="button">Send</button>
+      </div>
+      <p class="intent-hint">Click Start, then log in to ZoomInfo and set up your filters in the browser window that opens. Use Send (blank + Send = ENTER) to answer any prompts shown in the log.</p>
+    </section>
+
+    <section class="intent-panel" id="panel-linkedin">
+      <h2>Option 2 — ZoomInfo LinkedIn Scrap</h2>
+      <p class="desc">
+        Same ZoomInfo scrape as Option 1, then enriches every contact via LinkedIn Sales Navigator
+        (About, Experience Description, Latest Post, Tenure, LinkedIn Phone, LinkedIn Email).
+        Requires logging into both ZoomInfo and Sales Navigator.
+      </p>
+      <div class="intent-controls">
+        <button id="linkedin-run-btn" class="btn-toggle" type="button">Start</button>
+        <button id="linkedin-stop-btn" class="btn-toggle" type="button" disabled>Stop</button>
+        <span class="intent-status" id="linkedin-status" data-state="idle">Idle</span>
+        {% if linkedin_has_staging %}
+        <a class="btn-toggle" href="{{ url_for('intent_linkedin_preview') }}">Preview / Commit results →</a>
+        {% endif %}
+      </div>
+      <div class="intent-log" id="linkedin-log"></div>
+      <div class="intent-input-row">
+        <input type="text" id="linkedin-input-text" placeholder="Type a reply, or leave blank and click Send for ENTER">
+        <button id="linkedin-send-btn" class="btn-toggle" type="button">Send</button>
+      </div>
+      <p class="intent-hint">Click Start, log in to ZoomInfo first, then Sales Navigator when prompted. A ZoomInfo-only checkpoint CSV is saved automatically before the LinkedIn phase begins.</p>
+    </section>
+
+  </div>
+
+  <script>
+    function setupJobPanel(opts) {
+      const prefix = opts.prefix;
+      const runBtn = document.getElementById(prefix + '-run-btn');
+      const stopBtn = document.getElementById(prefix + '-stop-btn');
+      const statusEl = document.getElementById(prefix + '-status');
+      const logEl = document.getElementById(prefix + '-log');
+      const inputText = document.getElementById(prefix + '-input-text');
+      const sendBtn = document.getElementById(prefix + '-send-btn');
+
+      let jobId = null;
+      let pollTimer = null;
+
+      function setStatus(state, label) {
+        statusEl.dataset.state = state;
+        statusEl.textContent = label;
+      }
+
+      function renderLog(lines) {
+        const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 10;
+        logEl.textContent = (lines || []).join('\n');
+        if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function setRunning(isRunning) {
+        runBtn.disabled = isRunning;
+        stopBtn.disabled = !isRunning;
+      }
+
+      function poll() {
+        if (!jobId) return;
+        fetch(opts.statusUrlBase + jobId)
+          .then(res => res.json())
+          .then(data => {
+            if (data.error) { setStatus('error', 'Error: ' + data.error); setRunning(false); return; }
+            renderLog(data.log);
+            if (data.status === 'running' || data.status === 'queued') {
+              setStatus('running', data.status === 'queued' ? 'Starting…' : 'Running…');
+              pollTimer = setTimeout(poll, 1500);
+            } else {
+              setRunning(false);
+              setStatus(data.status, data.status.charAt(0).toUpperCase() + data.status.slice(1));
+              if (data.status === 'done') {
+                setTimeout(() => location.reload(), 600); // reload to pick up the Preview link
+              }
+            }
+          })
+          .catch(() => { setStatus('error', 'Error polling status'); });
+      }
+
+      runBtn.addEventListener('click', function () {
+        setRunning(true);
+        setStatus('running', 'Starting…');
+        logEl.textContent = '';
+        fetch(opts.runUrl, { method: 'POST' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.error) {
+              setStatus('error', 'Error: ' + data.error);
+              setRunning(false);
+              return;
+            }
+            jobId = data.job_id;
+            poll();
+          })
+          .catch(() => { setStatus('error', 'Error starting job'); setRunning(false); });
+      });
+
+      stopBtn.addEventListener('click', function () {
+        if (!jobId) return;
+        fetch(opts.stopUrlBase + jobId, { method: 'POST' });
+      });
+
+      function sendInput() {
+        if (!jobId) return;
+        const text = inputText.value;
+        inputText.value = '';
+        fetch(opts.inputUrlBase + jobId, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text }),
+        });
+      }
+      sendBtn.addEventListener('click', sendInput);
+      inputText.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); sendInput(); }
+      });
+
+      // Pick back up if a job was already running when this page was opened/reloaded.
+      fetch(opts.latestUrlBase)
+        .then(res => res.json())
+        .then(data => {
+          if (data.job_id && (data.status === 'running' || data.status === 'queued')) {
+            jobId = data.job_id;
+            setRunning(true);
+            poll();
+          }
+        })
+        .catch(() => {});
+    }
+
+    setupJobPanel({
+      prefix: 'contact',
+      runUrl: '{{ url_for("intent_contact_run") }}',
+      latestUrlBase: '{{ url_for("intent_contact_latest") }}',
+      inputUrlBase: '/intent-signal/contact/input/',
+      stopUrlBase: '/intent-signal/contact/stop/',
+      statusUrlBase: '/intent-signal/contact/status/',
+    });
+
+    setupJobPanel({
+      prefix: 'linkedin',
+      runUrl: '{{ url_for("intent_linkedin_run") }}',
+      latestUrlBase: '{{ url_for("intent_linkedin_latest") }}',
+      inputUrlBase: '/intent-signal/linkedin/input/',
+      stopUrlBase: '/intent-signal/linkedin/stop/',
+      statusUrlBase: '/intent-signal/linkedin/status/',
+    });
+  </script>
+</body>
+</html>
