@@ -1,0 +1,9 @@
+{
+  "name": "salesloft-live-feed-scraper",
+  "version": "0.1.0",
+  "description": "Phase 1 base scraper for Salesloft Live Feed -> CSV",
+  "main": "scrape_live_feed.js",
+  "dependencies": {
+    "playwright": "^1.45.0"
+  }
+}
